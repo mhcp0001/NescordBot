@@ -1,0 +1,28 @@
+const { SlashCommandBuilder } = require('discord.js');
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('help')
+        .setDescription('Botの使い方を表示します'),
+    
+    async execute(interaction) {
+        const helpMessage = `
+**Nescordbot の使い方**
+
+🎤 **音声メッセージ機能**
+音声メッセージを送信すると、自動的に文字起こしされます。
+
+📝 **コマンド一覧**
+\`/help\` - このヘルプを表示
+\`/status\` - Botのステータスを確認
+\`/search [keyword]\` - メモを検索
+
+💡 **Tips**
+- 音声は日本語で話してください
+- 最大25MBまでの音声ファイルに対応
+- 文字起こし後、AIが内容を整形します
+        `;
+
+        await interaction.reply({ content: helpMessage, ephemeral: true });
+    },
+};
