@@ -29,38 +29,38 @@
 - **推定時間**: 1時間
 
 #### Task 1.3: ConfigManagerの実装
-- [ ] src/config.pyの作成
-- [ ] Pydanticを使用したBotConfig modelの定義
-- [ ] .envからの環境変数読み込み
-- [ ] バリデーション処理の実装
+- [x] src/config.pyの作成
+- [x] Pydanticを使用したBotConfig modelの定義
+- [x] .envからの環境変数読み込み
+- [x] バリデーション処理の実装
 - **完了条件**: 環境変数が正しく読み込まれ、型検証される
 - **依存**: Task 1.2
 - **推定時間**: 2時間
 
 #### Task 1.4: LoggerServiceの実装
-- [ ] src/logger.pyの作成
-- [ ] 標準loggingの設定（コンソール + ファイル出力）
-- [ ] ログレベルの環境変数制御
-- [ ] フォーマッタの設定
+- [x] src/logger.pyの作成
+- [x] 標準loggingの設定（コンソール + ファイル出力）
+- [x] ログレベルの環境変数制御
+- [x] フォーマッタの設定
 - **完了条件**: 構造化されたログが出力される
 - **依存**: Task 1.3
 - **推定時間**: 1時間
 
 #### Task 1.5: BotCoreの基本実装
-- [ ] src/bot.pyの作成
-- [ ] NescordBotクラスの実装（commands.Bot継承）
-- [ ] setup_hookメソッドの実装
-- [ ] on_readyイベントハンドラ
-- [ ] グローバルエラーハンドラ（on_error, on_command_error）
+- [x] src/bot.pyの作成
+- [x] NescordBotクラスの実装（commands.Bot継承）
+- [x] setup_hookメソッドの実装
+- [x] on_readyイベントハンドラ
+- [x] グローバルエラーハンドラ（on_error, on_command_error）
 - **完了条件**: Botが起動し、基本的なイベントを処理できる
 - **依存**: Task 1.3, Task 1.4
 - **推定時間**: 3時間
 
 #### Task 1.6: GeneralCogの実装
-- [ ] src/cogs/general.pyの作成
-- [ ] pingコマンドの実装
-- [ ] helpコマンドのカスタマイズ
-- [ ] statusコマンドの実装（Bot情報表示）
+- [x] src/cogs/general.pyの作成
+- [x] pingコマンドの実装
+- [x] helpコマンドのカスタマイズ
+- [x] statusコマンドの実装（Bot情報表示）
 - **完了条件**: 基本コマンドが動作する
 - **依存**: Task 1.5
 - **推定時間**: 2時間
