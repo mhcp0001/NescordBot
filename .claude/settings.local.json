@@ -96,7 +96,8 @@
       "Bash(poetry run black:*)",
       "Bash(poetry run flake8:*)",
       "Bash(poetry run mypy:*)",
-      "Bash(poetry run pytest:*)"
+      "Bash(poetry run pytest:*)",
+      "Bash(git fetch:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
