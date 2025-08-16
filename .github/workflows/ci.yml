@@ -1,0 +1,225 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-interaction --no-root
+
+    - name: Install project
+      run: poetry install --no-interaction
+
+    - name: Set up test environment
+      run: |
+        mkdir -p data
+        mkdir -p logs
+        cp .env.example .env.test
+        echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
+        echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
+        echo "LOG_LEVEL=DEBUG" >> .env.test
+
+    - name: Run code formatting check (Black)
+      run: poetry run black --check src/ tests/
+
+    - name: Run import sorting check (isort)
+      run: poetry run isort --check-only src/ tests/
+
+    - name: Run linting (flake8)
+      run: poetry run flake8 src/ tests/
+
+    - name: Run type checking (mypy)
+      run: poetry run mypy src/ --ignore-missing-imports
+
+    - name: Run tests with pytest
+      env:
+        DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
+        OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+        LOG_LEVEL: DEBUG
+      run: |
+        poetry run pytest tests/ \
+          --verbose \
+          --cov=src \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --junit-xml=test-results.xml \
+          -m "not slow and not network"
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          test-results.xml
+          htmlcov/
+          .coverage
+
+    - name: Upload coverage to Codecov
+      if: matrix.python-version == '3.11'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Run security checks (bandit)
+      run: |
+        poetry add --group dev bandit[toml]
+        poetry run bandit -r src/ -f json -o bandit-report.json || true
+
+    - name: Run dependency vulnerability check (safety)
+      run: |
+        poetry add --group dev safety
+        poetry export -f requirements.txt --output requirements.txt --without-hashes
+        poetry run safety check -r requirements.txt --json --output safety-report.json || true
+
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, security]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Build package
+      run: poetry build
+
+    - name: Generate requirements.txt for deployment
+      run: |
+        poetry export -f requirements.txt --output requirements.txt --without-hashes
+        poetry export -f requirements.txt --output requirements-dev.txt --with dev --without-hashes
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: |
+          dist/
+          requirements.txt
+          requirements-dev.txt
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Run integration tests
+      env:
+        DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
+        OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+      run: |
+        poetry run pytest tests/ \
+          --verbose \
+          -m "integration" \
+          --maxfail=1
+
+    - name: Test startup script
+      env:
+        DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
+        OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+      run: |
+        # Test that the bot can be imported and basic validation works
+        poetry run python -c "
+        import sys
+        sys.path.insert(0, 'src')
+        from run import BotRunner
+        runner = BotRunner()
+        runner.setup_logging()
+        print('✅ Bot runner can be initialized')
+        result = runner.validate_environment()
+        print(f'✅ Environment validation: {result}')
+        "

@@ -1,0 +1,30 @@
+[flake8]
+max-line-length = 200
+extend-ignore = E203, W503, E501
+exclude = 
+    .git,
+    __pycache__,
+    .venv,
+    build,
+    dist,
+    *.egg-info,
+    .tox,
+    .coverage,
+    .coverage.*,
+    .cache,
+    nosetests.xml,
+    coverage.xml,
+    *.cover,
+    *.log,
+    .mypy_cache,
+    .pytest_cache
+
+per-file-ignores =
+    __init__.py:F401
+    tests/*:F401,F811
+
+# Error codes to ignore:
+# E203: whitespace before ':' (conflicts with black)
+# W503: line break before binary operator (conflicts with black)
+# F401: module imported but unused (common in __init__.py)
+# F811: redefinition of unused name (common in tests)

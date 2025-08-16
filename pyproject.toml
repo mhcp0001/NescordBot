@@ -27,9 +27,12 @@ black = "^23.12.0"
 flake8 = "^6.1.0"
 pytest = "^7.4.4"
 pytest-asyncio = "^0.21.1"
+pytest-cov = "^4.1.0"
 mypy = "^1.8.0"
 isort = "^5.13.2"
 pre-commit = "^3.6.0"
+bandit = {extras = ["toml"], version = "^1.7.5"}
+safety = "^2.3.5"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -65,8 +68,54 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = true
 ignore_missing_imports = true
+namespace_packages = true
+explicit_package_bases = true
+exclude = [
+    "tests/",
+    ".venv/",
+    "build/",
+    "dist/"
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "network: marks tests that require network access"
+]
+
+[tool.flake8]
+max-line-length = 200
+extend-ignore = ["E203", "W503", "E501"]
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "build",
+    "dist",
+    "*.egg-info"
+]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "build", "dist"]
+skips = ["B101"]  # Skip assert_used test
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "tests/*",
+    "src/*/test_*.py",
+    "*/__pycache__/*"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:"
+]
