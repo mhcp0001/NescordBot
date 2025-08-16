@@ -1,30 +1,32 @@
-# Discord Bot
-discord.py>=2.3.2
-python-dotenv>=1.0.0
+# NescordBot Production Dependencies
+# Generated for Railway deployment - Production only
+
+# Core Discord Bot
+discord.py>=2.3.2,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
+
+# Configuration & Validation
+pydantic>=2.0.0,<3.0.0
 
 # 音声処理
-openai>=1.10.0
-pydub>=0.25.1
-ffmpeg-python>=0.2.0
+openai>=1.10.0,<2.0.0
+pydub>=0.25.1,<1.0.0
+ffmpeg-python>=0.2.0,<1.0.0
 
-# AI/ML関連
-aiohttp>=3.9.1
-numpy>=1.24.3
-pandas>=2.0.3
+# HTTP & Async
+aiohttp>=3.9.1,<4.0.0
 
-# ユーティリティ
-psutil>=5.9.5
-python-dateutil>=2.8.2
+# Data Processing
+numpy>=1.24.3,<2.0.0
+pandas>=2.0.3,<3.0.0
+
+# System Utilities
+psutil>=5.9.5,<6.0.0
+python-dateutil>=2.8.2,<3.0.0
 pytz>=2023.3
 
-# データベース（オプション）
-aiosqlite>=0.19.0
+# Database
+aiosqlite>=0.19.0,<1.0.0
 
-# ログ・監視
-colorlog>=6.8.0
-
-# 開発用（オプション）
-black>=23.12.0
-flake8>=6.1.0
-pytest>=7.4.4
-pytest-asyncio>=0.21.1
+# Logging
+colorlog>=6.8.0,<7.0.0
