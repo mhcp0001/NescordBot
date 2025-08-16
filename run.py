@@ -15,10 +15,27 @@ from pathlib import Path
 from typing import Optional
 
 # Add src directory to Python path for imports
-sys.path.insert(0, str(Path(__file__).parent / "src"))
+# Handle both local development and container deployment
+current_dir = Path(__file__).parent
+src_path = current_dir / "src"
 
-from src.logger import get_logger
-from src.config import get_config_manager
+# Add both current directory and src to path for container compatibility
+sys.path.insert(0, str(current_dir))
+sys.path.insert(0, str(src_path))
+
+try:
+    from src.logger import get_logger
+    from src.config import get_config_manager
+except ImportError:
+    # Fallback for container environment where src might be at root level
+    import logger as src_logger
+    import config as src_config
+    
+    def get_logger(name):
+        return src_logger.get_logger(name)
+    
+    def get_config_manager():
+        return src_config.get_config_manager()
 
 
 class BotRunner:
@@ -147,7 +164,12 @@ class BotRunner:
             self.logger.info("Starting NescordBot...")
             
             # Import bot here to avoid import issues during early validation
-            from src.bot import main as bot_main
+            try:
+                from src.bot import main as bot_main
+            except ImportError:
+                # Fallback for container environment
+                import bot as src_bot
+                bot_main = src_bot.main
             
             # Create task for bot and shutdown monitoring
             bot_task = asyncio.create_task(bot_main())
