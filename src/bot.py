@@ -127,7 +127,8 @@ class NescordBot(commands.Bot):
 
     async def on_ready(self) -> None:
         """Handle bot ready event."""
-        self.logger.info(f"Bot logged in as {self.user} (ID: {self.user.id})")
+        if self.user:
+            self.logger.info(f"Bot logged in as {self.user} (ID: {self.user.id})")
         self.logger.info(f"Connected to {len(self.guilds)} guilds")
 
         # Set bot presence
@@ -206,7 +207,8 @@ class NescordBot(commands.Bot):
             await self._send_voice_acknowledgment(message, attachment)
 
             # Remove processing reaction and add success reaction
-            await message.remove_reaction("⏳", self.user)
+            if self.user:
+                await message.remove_reaction("⏳", self.user)
             await message.add_reaction("✅")
 
         except Exception as e:
@@ -215,7 +217,8 @@ class NescordBot(commands.Bot):
 
             # Remove processing reaction and add error reaction
             try:
-                await message.remove_reaction("⏳", self.user)
+                if self.user:
+                    await message.remove_reaction("⏳", self.user)
                 await message.add_reaction("❌")
                 await message.reply("❌ 音声メッセージの処理中にエラーが発生しました。")
             except Exception as reaction_error:
