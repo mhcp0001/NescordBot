@@ -11,19 +11,19 @@
 ### Phase 1: MVP基盤 + 最初の機能（2週間）
 
 #### Task 1.1: プロジェクト初期設定
-- [ ] プロジェクト構造の作成（src/, tests/, docs/）
-- [ ] .env.exampleファイルの作成
-- [ ] .gitignoreの更新（.env, *.log, __pycache__/）
-- [ ] README.mdの基本手順作成
+- [x] プロジェクト構造の作成（src/, tests/, docs/）
+- [x] .env.exampleファイルの作成
+- [x] .gitignoreの更新（.env, *.log, __pycache__/）
+- [x] README.mdの基本手順作成
 - **完了条件**: プロジェクト構造が整い、環境変数サンプルが用意される
 - **依存**: なし
 - **推定時間**: 1時間
 
 #### Task 1.2: Poetry環境構築
-- [ ] pyproject.tomlの作成（Python 3.11+指定）
-- [ ] 基本依存関係の追加（discord.py, python-dotenv, pydantic）
-- [ ] 開発依存関係の追加（pytest, black, flake8, mypy）
-- [ ] poetry.lockの生成
+- [x] pyproject.tomlの作成（Python 3.11+指定）
+- [x] 基本依存関係の追加（discord.py, python-dotenv, pydantic）
+- [x] 開発依存関係の追加（pytest, black, flake8, mypy）
+- [x] poetry.lockの生成
 - **完了条件**: Poetry環境で依存関係がインストール可能
 - **依存**: Task 1.1
 - **推定時間**: 1時間

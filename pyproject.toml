@@ -5,7 +5,6 @@ description = "Discord Bot with voice transcription and AI-powered features"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
 packages = [{include = "src"}]
-python = "^3.11"
 
 [tool.poetry.dependencies]
 python = "^3.11"
