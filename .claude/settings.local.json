@@ -83,7 +83,12 @@
       "Bash(gh issue list:*)",
       "Bash(gh issue edit:*)",
       "WebFetch(domain:docs.anthropic.com)",
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh label create:*)",
+      "Bash(gh project list:*)",
+      "Bash(gh project item-add:*)",
+      "Bash(gh api graphql:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
