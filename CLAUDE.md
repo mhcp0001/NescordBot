@@ -36,12 +36,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Link PRs to issues**: Reference issue numbers in PR descriptions
 - **Regular synchronization**: Periodically check and update issue status
 - **Create issues for new tasks**: When discovering new tasks, create corresponding issues
+- **MANDATORY: Commit before closing issues**: Always create a commit for completed work before closing any GitHub issue. Include the commit hash in the issue closing comment.
 
 ### Issue Management Workflow
 1. Check existing issues before starting work
 2. Reference issue numbers in commits (e.g., `feat: implement feature #123`)
-3. Close issues when work is completed with explanatory comments
-4. Update project boards if accessible
+3. **MANDATORY**: Create and push commits for all completed work
+4. Close issues when work is completed with explanatory comments **including commit hash**
+5. Update project boards if accessible
+
+### Issue Closing Template
+When closing issues, always include:
+- Summary of completed work
+- Commit hash reference (e.g., "Implementation completed in commit abc1234")
+- Link to specific files changed
+- Test results if applicable
 
 ## [GLOBAL DIRECTIVE] Gemini Integration (Priority over project-specific CLAUDE.md)
 
