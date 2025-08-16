@@ -10,8 +10,8 @@ pydantic>=2.0.0,<3.0.0
 
 # 音声処理
 openai>=1.10.0,<2.0.0
-pydub>=0.25.1,<1.0.0
-ffmpeg-python>=0.2.0,<1.0.0
+# pydub>=0.25.1,<1.0.0  # FFmpeg依存のため一時的にコメントアウト
+# ffmpeg-python>=0.2.0,<1.0.0  # FFmpeg依存のため一時的にコメントアウト
 
 # HTTP & Async
 aiohttp>=3.9.1,<4.0.0

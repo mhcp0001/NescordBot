@@ -1,0 +1,53 @@
+# Development files
+.git/
+.github/
+docs/
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+.cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+logs/
+*.log
+
+# Temporary files
+.tmp/
+tmp/
+
+# Environment files
+.env
+.env.local
+.env.test
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Railway specific
+railway.toml

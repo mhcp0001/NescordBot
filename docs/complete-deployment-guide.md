@@ -72,6 +72,7 @@
    ```
    例: https://discord.com/api/oauth2/authorize?client_id=123456789&permissions=274877984768&scope=bot%20applications.commands
    ```
+https://discord.com/oauth2/authorize?client_id=1391291495025217616&permissions=0&integration_type=0&scope=bot+applications.commands
 
 ---
 
@@ -222,7 +223,19 @@
 
 ### Railway デプロイエラー
 
-**原因: ビルドエラー**
+**原因 1: Docker ビルド内部エラー**
+```bash
+panic: send on closed channel
+Error: Docker build failed
+```
+**解決策:**
+1. Railway ダッシュボードで "Redeploy" をクリック
+2. それでも失敗する場合は以下を確認：
+   - nixpacks.toml でFFmpeg設定を削除
+   - requirements.txt でFFmpeg関連依存を一時的にコメントアウト
+   - .dockerignore を追加してビルド最適化
+
+**原因 2: 依存関係ビルドエラー**
 ```bash
 # デプロイログでエラー確認
 ❌ Build failed
