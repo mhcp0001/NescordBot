@@ -33,6 +33,7 @@ isort = "^5.13.2"
 pre-commit = "^3.6.0"
 bandit = {extras = ["toml"], version = "^1.7.5"}
 safety = "^2.3.5"
+ruff = "^0.12.9"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
@@ -119,3 +120,36 @@ exclude_lines = [
     "raise NotImplementedError",
     "if __name__ == .__main__.:"
 ]
+
+[tool.ruff]
+# Black compatible line length
+line-length = 100
+
+# Target Python 3.11
+target-version = "py311"
+
+[tool.ruff.lint]
+# Enable flake8 rules (F) and isort rules (I)
+select = ["E", "F", "W", "I"]
+
+# Ignore rules that conflict with Black or are too strict
+ignore = ["E203", "E501"]
+
+# Exclude directories
+exclude = [
+    ".git",
+    "__pycache__",
+    ".venv",
+    "build",
+    "dist",
+    ".mypy_cache",
+    ".pytest_cache",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/*" = ["F401", "F811", "S101"]
+
+[tool.ruff.format]
+# Black compatible formatting
+quote-style = "double"

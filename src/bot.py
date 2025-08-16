@@ -18,7 +18,6 @@ try:
 except ImportError:
     # Fallback for Railway deployment
     import sys
-    from pathlib import Path
 
     # Add parent directory to path
     parent_path = str(Path(__file__).parent.parent)
