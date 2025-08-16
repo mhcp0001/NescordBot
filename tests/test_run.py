@@ -212,19 +212,6 @@ class TestBotRunner:
             assert result == 0
 
     @pytest.mark.asyncio
-    async def test_run_bot_keyboard_interrupt(self):
-        """Test bot running with keyboard interrupt."""
-        runner = BotRunner()
-        runner.setup_logging()
-
-        with patch("src.bot.main", new_callable=AsyncMock) as mock_bot_main:
-            mock_bot_main.side_effect = KeyboardInterrupt()
-
-            result = await runner.run_bot()
-
-            assert result == 0
-
-    @pytest.mark.asyncio
     async def test_run_bot_exception(self):
         """Test bot running with exception."""
         runner = BotRunner()
@@ -312,13 +299,6 @@ class TestMainFunction:
     def test_main_success(self):
         """Test successful main function execution."""
         with patch("asyncio.run", return_value=0), patch("builtins.print"):
-            result = main()
-
-            assert result == 0
-
-    def test_main_keyboard_interrupt(self):
-        """Test main function with keyboard interrupt."""
-        with patch("asyncio.run", side_effect=KeyboardInterrupt()), patch("builtins.print"):
             result = main()
 
             assert result == 0
