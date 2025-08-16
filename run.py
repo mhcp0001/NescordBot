@@ -144,7 +144,9 @@ class BotRunner:
         else:
             # Windows
             signal.signal(signal.SIGINT, signal_handler)
-            signal.signal(signal.SIGBREAK, signal_handler)
+            # SIGBREAK is Windows-specific, check if available
+            if hasattr(signal, 'SIGBREAK'):
+                signal.signal(signal.SIGBREAK, signal_handler)
         
         if self.logger:
             self.logger.info("Signal handlers configured")
