@@ -44,7 +44,7 @@ class Voice(commands.Cog):
                     language="ja",
                 )
 
-            return transcript.text
+            return str(transcript.text) if transcript.text else None
 
         except Exception as e:
             import logging
@@ -152,8 +152,10 @@ class Voice(commands.Cog):
                         name="✨ 整形済みテキスト（一部）", value=processed_text[:1021] + "...", inline=False
                     )
                     # 全文はファイルで添付
-                    full_text = io.StringIO(processed_text)
-                    file = discord.File(full_text, filename=f"transcription_{message.id}.txt")
+                    full_text_bytes = processed_text.encode("utf-8")
+                    file = discord.File(
+                        io.BytesIO(full_text_bytes), filename=f"transcription_{message.id}.txt"
+                    )
                     await processing_msg.edit(content=None, embed=embed, attachments=[file])
                 else:
                     embed.add_field(name="✨ 整形済みテキスト", value=processed_text, inline=False)

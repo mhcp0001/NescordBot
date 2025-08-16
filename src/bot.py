@@ -18,20 +18,19 @@ try:
 except ImportError:
     # Fallback for Railway deployment
     import sys
-    from pathlib import Path
-    
+
     # Add parent directory to path
     parent_path = str(Path(__file__).parent.parent)
     if parent_path not in sys.path:
         sys.path.insert(0, parent_path)
-    
+
     try:
         from src.config import get_config_manager
         from src.logger import get_logger
     except ImportError:
         # Direct import as last resort
-        from config import get_config_manager
-        from logger import get_logger
+        from config import get_config_manager  # type: ignore
+        from logger import get_logger  # type: ignore
 
 
 class NescordBot(commands.Bot):
@@ -128,7 +127,8 @@ class NescordBot(commands.Bot):
 
     async def on_ready(self) -> None:
         """Handle bot ready event."""
-        self.logger.info(f"Bot logged in as {self.user} (ID: {self.user.id})")
+        if self.user:
+            self.logger.info(f"Bot logged in as {self.user} (ID: {self.user.id})")
         self.logger.info(f"Connected to {len(self.guilds)} guilds")
 
         # Set bot presence
@@ -207,7 +207,8 @@ class NescordBot(commands.Bot):
             await self._send_voice_acknowledgment(message, attachment)
 
             # Remove processing reaction and add success reaction
-            await message.remove_reaction("⏳", self.user)
+            if self.user:
+                await message.remove_reaction("⏳", self.user)
             await message.add_reaction("✅")
 
         except Exception as e:
@@ -216,7 +217,8 @@ class NescordBot(commands.Bot):
 
             # Remove processing reaction and add error reaction
             try:
-                await message.remove_reaction("⏳", self.user)
+                if self.user:
+                    await message.remove_reaction("⏳", self.user)
                 await message.add_reaction("❌")
                 await message.reply("❌ 音声メッセージの処理中にエラーが発生しました。")
             except Exception as reaction_error:

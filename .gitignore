@@ -24,8 +24,7 @@ data/
 .DS_Store
 Thumbs.db
 
-# IDE設定
-.vscode/
+# IDE設定 (VS Code設定は含める)
 .idea/
 *.swp
 *.swo
