@@ -66,38 +66,38 @@
 - **推定時間**: 2時間
 
 #### Task 1.7: 起動スクリプトの作成
-- [ ] run.pyまたはmain.pyの作成
-- [ ] ServiceContainerの基本実装
-- [ ] 非同期メイン関数の実装
-- [ ] グレースフルシャットダウンの実装
+- [x] run.pyまたはmain.pyの作成
+- [x] ServiceContainerの基本実装
+- [x] 非同期メイン関数の実装
+- [x] グレースフルシャットダウンの実装
 - **完了条件**: poetry run python run.pyでBot起動
 - **依存**: Task 1.5, Task 1.6
 - **推定時間**: 2時間
 
 #### Task 1.8: 基本的なテストの作成
-- [ ] tests/conftest.pyの作成（pytest fixtures）
-- [ ] tests/test_config.pyの作成
-- [ ] tests/test_general_cog.pyの作成
-- [ ] モックコンテキストの実装
+- [x] tests/conftest.pyの作成（pytest fixtures）
+- [x] tests/test_config.pyの作成
+- [x] tests/test_general_cog.pyの作成
+- [x] モックコンテキストの実装
 - **完了条件**: 基本的なユニットテストがパスする
 - **依存**: Task 1.6
 - **推定時間**: 3時間
 
 #### Task 1.9: GitHub Actions CI設定
-- [ ] .github/workflows/ci.ymlの作成
-- [ ] Pythonセットアップ
-- [ ] Poetry依存関係インストール
-- [ ] pytest実行
-- [ ] コード品質チェック（black, flake8）
+- [x] .github/workflows/ci.ymlの作成
+- [x] Pythonセットアップ
+- [x] Poetry依存関係インストール
+- [x] pytest実行
+- [x] コード品質チェック（black, flake8）
 - **完了条件**: PRでCIが自動実行される
 - **依存**: Task 1.8
 - **推定時間**: 2時間
 
 #### Task 1.10: Railway手動デプロイ準備
-- [ ] requirements.txt生成（poetry export）
-- [ ] Procfileの作成
-- [ ] runtime.txtの作成（Python 3.11）
-- [ ] Railway設定ドキュメント作成
+- [x] requirements.txt生成（poetry export）
+- [x] Procfileの作成
+- [x] runtime.txtの作成（Python 3.11）
+- [x] Railway設定ドキュメント作成
 - **完了条件**: Railwayにデプロイ可能な状態
 - **依存**: Task 1.7
 - **推定時間**: 2時間

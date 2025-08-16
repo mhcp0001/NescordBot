@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator
 
 
 class BotConfig(BaseModel):
@@ -23,36 +23,22 @@ class BotConfig(BaseModel):
 
     # Required settings
     discord_token: str = Field(..., description="Discord bot token")
-    openai_api_key: str = Field(
-        ..., description="OpenAI API key for Whisper and GPT"
-    )
+    openai_api_key: str = Field(..., description="OpenAI API key for Whisper and GPT")
 
     # Optional settings with defaults
     log_level: str = Field(default="INFO", description="Logging level")
-    max_audio_size_mb: int = Field(
-        default=25, description="Maximum audio file size in MB"
-    )
-    speech_language: str = Field(
-        default="ja", description="Speech recognition language"
-    )
+    max_audio_size_mb: int = Field(default=25, description="Maximum audio file size in MB")
+    speech_language: str = Field(default="ja", description="Speech recognition language")
 
     # Database settings (for future use)
-    database_url: str = Field(
-        default="sqlite:///data/nescordbot.db", description="Database URL"
-    )
+    database_url: str = Field(default="sqlite:///data/nescordbot.db", description="Database URL")
 
     # GitHub integration settings (for future use)
-    github_token: Optional[str] = Field(
-        default=None, description="GitHub API token"
-    )
-    github_repo: Optional[str] = Field(
-        default=None, description="GitHub repository"
-    )
+    github_token: Optional[str] = Field(default=None, description="GitHub API token")
+    github_repo: Optional[str] = Field(default=None, description="GitHub repository")
 
     # Obsidian integration settings (for future use)
-    obsidian_vault_path: Optional[str] = Field(
-        default=None, description="Obsidian vault path"
-    )
+    obsidian_vault_path: Optional[str] = Field(default=None, description="Obsidian vault path")
 
     @field_validator("discord_token")
     @classmethod
@@ -99,15 +85,11 @@ class BotConfig(BaseModel):
     def validate_speech_language(cls, v):
         """Validate speech language code."""
         # Common language codes
-        valid_languages = [
-            "ja", "en", "es", "fr", "de", "it", "pt", "ru", "ko", "zh"
-        ]
+        valid_languages = ["ja", "en", "es", "fr", "de", "it", "pt", "ru", "ko", "zh"]
         if v not in valid_languages:
             # Allow any 2-letter language code, but warn about common ones
             if len(v) != 2:
-                raise ValueError(
-                    "Speech language should be a 2-letter language code"
-                )
+                raise ValueError("Speech language should be a 2-letter language code")
         return v.lower()
 
 
@@ -156,9 +138,7 @@ class ConfigManager:
                 log_level=os.getenv("LOG_LEVEL", "INFO"),
                 max_audio_size_mb=int(os.getenv("MAX_AUDIO_SIZE_MB", "25")),
                 speech_language=os.getenv("SPEECH_LANGUAGE", "ja"),
-                database_url=os.getenv(
-                    "DATABASE_URL", "sqlite:///data/nescordbot.db"
-                ),
+                database_url=os.getenv("DATABASE_URL", "sqlite:///data/nescordbot.db"),
                 github_token=os.getenv("GITHUB_TOKEN"),
                 github_repo=os.getenv("GITHUB_REPO"),
                 obsidian_vault_path=os.getenv("OBSIDIAN_VAULT_PATH"),
