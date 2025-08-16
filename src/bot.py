@@ -1,150 +1,328 @@
+"""
+NescordBot - Discord bot with voice transcription and AI-powered features.
+
+This module contains the main bot implementation using discord.py with
+integrated configuration management and logging services.
+"""
+
+import asyncio
+import os
+import traceback
+from pathlib import Path
+from typing import Optional
+
 import discord
 from discord.ext import commands
-import os
-import asyncio
-from dotenv import load_dotenv
-import logging
-from datetime import datetime
-import aiohttp
 
-# 環境変数の読み込み
-load_dotenv()
+from src.config import get_config_manager
+from src.logger import get_logger
 
-# ログ設定
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
-    ]
-)
-logger = logging.getLogger(__name__)
-
-# Botの設定
-intents = discord.Intents.default()
-intents.message_content = True
-intents.voice_states = True
-intents.guilds = True
 
 class NescordBot(commands.Bot):
+    """
+    Main Discord bot class with voice transcription and AI features.
+    
+    Inherits from discord.py commands.Bot and integrates with ConfigManager
+    and LoggerService for centralized configuration and logging.
+    """
+    
     def __init__(self):
+        """Initialize the NescordBot with proper configuration."""
+        # Get configuration
+        self.config_manager = get_config_manager()
+        self.config = self.config_manager.config
+        
+        # Get logger
+        self.logger = get_logger("bot")
+        
+        # Set up Discord intents
+        intents = discord.Intents.default()
+        intents.message_content = True
+        intents.voice_states = True
+        intents.guilds = True
+        
         super().__init__(
-            command_prefix='!',
+            command_prefix="!",  # Prefix for text commands (mostly for debugging)
             intents=intents,
-            help_command=None  # カスタムヘルプコマンドを使用
+            help_command=None,  # We'll implement custom help
+            case_insensitive=True
         )
         
-    async def setup_hook(self):
-        """Bot起動時の初期設定"""
-        # Cogsの読み込み
-        await self.load_extension('cogs.general')
-        await self.load_extension('cogs.voice')
+        # Create data directory for temporary files
+        self.data_dir = Path("data")
+        self.data_dir.mkdir(exist_ok=True)
         
-        # スラッシュコマンドの同期
-        await self.tree.sync()
-        logger.info(f"Synced {len(self.tree.get_commands())} slash commands")
+        self.logger.info("NescordBot instance created")
+    
+    async def setup_hook(self) -> None:
+        """
+        Set up the bot after login but before connecting to Discord.
         
-    async def on_ready(self):
-        """Bot起動完了時の処理"""
-        logger.info(f'{self.user} (ID: {self.user.id}) が起動しました！')
+        This method is called automatically by discord.py and is used to
+        load cogs and sync application commands.
+        """
+        self.logger.info("Starting bot setup...")
         
-        # ステータスの設定
-        await self.change_presence(
-            activity=discord.Activity(
-                type=discord.ActivityType.listening,
-                name="音声メッセージ"
-            )
+        try:
+            # Load cogs
+            await self._load_cogs()
+            
+            # Sync application commands
+            await self._sync_commands()
+            
+            self.logger.info("Bot setup completed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error during bot setup: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            raise
+    
+    async def _load_cogs(self) -> None:
+        """Load all cogs from the cogs directory."""
+        cogs_dir = Path("src/cogs")
+        cogs_loaded = 0
+        
+        if not cogs_dir.exists():
+            self.logger.warning("Cogs directory not found")
+            return
+        
+        # Load cogs from files
+        for cog_file in cogs_dir.glob("*.py"):
+            if cog_file.name.startswith("__"):
+                continue
+                
+            cog_name = f"src.cogs.{cog_file.stem}"
+            
+            try:
+                await self.load_extension(cog_name)
+                cogs_loaded += 1
+                self.logger.info(f"Loaded cog: {cog_name}")
+            except Exception as e:
+                self.logger.error(f"Failed to load cog {cog_name}: {e}")
+        
+        self.logger.info(f"Loaded {cogs_loaded} cogs")
+    
+    async def _sync_commands(self) -> None:
+        """Sync application commands with Discord."""
+        try:
+            synced = await self.tree.sync()
+            self.logger.info(f"Synced {len(synced)} application commands")
+        except Exception as e:
+            self.logger.error(f"Failed to sync commands: {e}")
+    
+    async def on_ready(self) -> None:
+        """Handle bot ready event."""
+        self.logger.info(f"Bot logged in as {self.user} (ID: {self.user.id})")
+        self.logger.info(f"Connected to {len(self.guilds)} guilds")
+        
+        # Set bot presence
+        activity = discord.Activity(
+            type=discord.ActivityType.listening,
+            name="音声メッセージ | /help"
         )
+        await self.change_presence(activity=activity, status=discord.Status.online)
         
-    async def on_message(self, message):
-        """メッセージ受信時の処理"""
-        # Bot自身のメッセージは無視
+        self.logger.info("Bot is ready and online!")
+    
+    async def on_message(self, message: discord.Message) -> None:
+        """
+        Handle incoming messages.
+        
+        This method processes voice message attachments and regular commands.
+        """
+        # Ignore messages from bots
         if message.author.bot:
             return
-            
-        # 音声メッセージの処理
-        if message.attachments:
-            for attachment in message.attachments:
-                if attachment.content_type and 'audio' in attachment.content_type:
-                    await self.process_voice_message(message, attachment)
-                    
-        # コマンド処理
+        
+        # Log message for debugging (without content for privacy)
+        self.logger.debug(
+            f"Message from {message.author} in {message.guild}/{message.channel} "
+            f"with {len(message.attachments)} attachments"
+        )
+        
+        # Process voice attachments
+        await self._process_voice_attachments(message)
+        
+        # Process regular commands
         await self.process_commands(message)
+    
+    async def _process_voice_attachments(self, message: discord.Message) -> None:
+        """Process voice message attachments."""
+        if not message.attachments:
+            return
         
-    async def process_voice_message(self, message, attachment):
-        """音声メッセージの処理"""
+        for attachment in message.attachments:
+            # Check if it's an audio file
+            if self._is_audio_file(attachment):
+                await self._handle_voice_message(message, attachment)
+    
+    def _is_audio_file(self, attachment: discord.Attachment) -> bool:
+        """Check if an attachment is an audio file."""
+        # Check content type
+        if attachment.content_type and "audio" in attachment.content_type:
+            return True
+        
+        # Check file extension
+        audio_extensions = {".ogg", ".mp3", ".wav", ".m4a", ".webm", ".mp4"}
+        file_ext = Path(attachment.filename).suffix.lower()
+        
+        return file_ext in audio_extensions
+    
+    async def _handle_voice_message(
+        self, 
+        message: discord.Message, 
+        attachment: discord.Attachment
+    ) -> None:
+        """Handle a voice message attachment."""
         try:
-            # 処理中のリアクションを追加
-            await message.add_reaction('⏳')
+            # Check file size limit
+            max_size_mb = self.config.max_audio_size_mb
+            max_size_bytes = max_size_mb * 1024 * 1024
             
-            logger.info(f'音声メッセージを検出: {attachment.filename}')
+            if attachment.size > max_size_bytes:
+                await message.reply(
+                    f"⚠️ 音声ファイルが大きすぎます。"
+                    f"最大サイズ: {max_size_mb}MB"
+                )
+                return
             
-            # 音声ファイルをダウンロード
-            audio_data = await attachment.read()
+            # Add processing reaction
+            await message.add_reaction("⏳")
             
-            # 一時ファイルとして保存
-            temp_path = os.path.join('data', f'temp_{message.id}.ogg')
-            os.makedirs('data', exist_ok=True)
-            
-            with open(temp_path, 'wb') as f:
-                f.write(audio_data)
-                
-            # ここに音声認識処理を追加
-            # transcription = await transcribe_audio(temp_path)
-            
-            # 仮の応答（実際は音声認識結果を使用）
-            embed = discord.Embed(
-                title="🎤 音声メッセージを受信しました",
-                description="音声認識機能は現在実装中です。",
-                color=discord.Color.blue(),
-                timestamp=datetime.utcnow()
+            self.logger.info(
+                f"Processing voice message: {attachment.filename} "
+                f"({attachment.size} bytes) from {message.author}"
             )
-            embed.add_field(
-                name="ファイル名",
-                value=attachment.filename,
-                inline=True
-            )
-            embed.add_field(
-                name="サイズ",
-                value=f"{attachment.size / 1024:.1f} KB",
-                inline=True
-            )
-            embed.set_footer(text=f"送信者: {message.author.name}")
             
-            await message.reply(embed=embed)
+            # For now, just acknowledge the voice message
+            # Voice processing will be implemented in later tasks
+            await self._send_voice_acknowledgment(message, attachment)
             
-            # 処理完了のリアクション
-            await message.remove_reaction('⏳', self.user)
-            await message.add_reaction('✅')
+            # Remove processing reaction and add success reaction
+            await message.remove_reaction("⏳", self.user)
+            await message.add_reaction("✅")
             
-            # 一時ファイルを削除
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-                
         except Exception as e:
-            logger.error(f'音声メッセージ処理エラー: {e}')
-            await message.remove_reaction('⏳', self.user)
-            await message.add_reaction('❌')
-            await message.reply(f'エラーが発生しました: {str(e)}')
-
-def main():
-    """メイン関数"""
-    # Botトークンの確認
-    token = os.getenv('DISCORD_TOKEN')
-    if not token:
-        logger.error('DISCORD_TOKENが設定されていません。')
-        return
+            self.logger.error(f"Error processing voice message: {e}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Remove processing reaction and add error reaction
+            try:
+                await message.remove_reaction("⏳", self.user)
+                await message.add_reaction("❌")
+                await message.reply(f"❌ 音声メッセージの処理中にエラーが発生しました。")
+            except Exception as reaction_error:
+                self.logger.error(f"Error updating reactions: {reaction_error}")
+    
+    async def _send_voice_acknowledgment(
+        self, 
+        message: discord.Message, 
+        attachment: discord.Attachment
+    ) -> None:
+        """Send acknowledgment for voice message."""
+        embed = discord.Embed(
+            title="🎤 音声メッセージを受信しました",
+            description="音声認識機能は開発中です。今後のアップデートをお待ちください。",
+            color=discord.Color.blue()
+        )
+        embed.add_field(
+            name="ファイル名",
+            value=attachment.filename,
+            inline=True
+        )
+        embed.add_field(
+            name="サイズ",
+            value=f"{attachment.size / 1024:.1f} KB",
+            inline=True
+        )
+        embed.add_field(
+            name="形式",
+            value=attachment.content_type or "不明",
+            inline=True
+        )
+        embed.set_footer(text=f"送信者: {message.author.display_name}")
+        embed.timestamp = message.created_at
         
-    # Bot インスタンスの作成と起動
-    bot = NescordBot()
+        await message.reply(embed=embed)
+    
+    async def on_error(self, event: str, *args, **kwargs) -> None:
+        """Handle global bot errors."""
+        self.logger.error(f"Unhandled error in event {event}")
+        self.logger.error(f"Args: {args}")
+        self.logger.error(f"Kwargs: {kwargs}")
+        self.logger.error(f"Traceback: {traceback.format_exc()}")
+    
+    async def on_command_error(
+        self, 
+        ctx: commands.Context, 
+        error: commands.CommandError
+    ) -> None:
+        """Handle command errors."""
+        if isinstance(error, commands.CommandNotFound):
+            # Ignore command not found errors
+            return
+        
+        self.logger.error(
+            f"Command error in {ctx.command}: {error} "
+            f"(User: {ctx.author}, Guild: {ctx.guild})"
+        )
+        
+        # Send user-friendly error message
+        if isinstance(error, commands.MissingRequiredArgument):
+            await ctx.reply("❌ 必要な引数が不足しています。")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.reply("❌ 引数の形式が正しくありません。")
+        elif isinstance(error, commands.MissingPermissions):
+            await ctx.reply("❌ この操作を実行する権限がありません。")
+        elif isinstance(error, commands.BotMissingPermissions):
+            await ctx.reply("❌ Botにこの操作を実行する権限がありません。")
+        else:
+            await ctx.reply("❌ コマンドの実行中にエラーが発生しました。")
+    
+    async def close(self) -> None:
+        """Clean up resources when bot is shutting down."""
+        self.logger.info("Bot is shutting down...")
+        await super().close()
+        self.logger.info("Bot shutdown complete")
+
+
+async def main() -> None:
+    """
+    Main function to run the bot.
+    
+    This function handles bot initialization, configuration validation,
+    and graceful shutdown.
+    """
+    # Get logger for main function
+    logger = get_logger("main")
     
     try:
-        bot.run(token)
-    except discord.LoginFailure:
-        logger.error('無効なトークンです。')
+        # Validate configuration
+        config_manager = get_config_manager()
+        config = config_manager.config  # This will raise ValidationError if invalid
+        
+        logger.info("Configuration validated successfully")
+        logger.info(f"Log level: {config.log_level}")
+        logger.info(f"Max audio size: {config.max_audio_size_mb}MB")
+        logger.info(f"Speech language: {config.speech_language}")
+        
+        # Create and run bot
+        bot = NescordBot()
+        
+        async with bot:
+            await bot.start(config.discord_token)
+            
     except Exception as e:
-        logger.error(f'予期しないエラー: {e}')
+        logger.critical(f"Failed to start bot: {e}")
+        logger.critical(f"Traceback: {traceback.format_exc()}")
+        raise
 
-if __name__ == '__main__':
-    main()
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\nBot stopped by user")
+    except Exception as e:
+        print(f"Fatal error: {e}")
+        exit(1)
