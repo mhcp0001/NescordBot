@@ -177,11 +177,14 @@ class TestNescordBot:
     async def test_on_message_user_message(self):
         """Test on_message processes user messages."""
         bot = NescordBot()
+        
+        # Mock only logger to avoid initialization issues, keep config
+        bot.logger = MagicMock()
 
-        # Mock user message
+        # Mock user message - IMPORTANT: Set properties AFTER creating nested mocks
         message = MagicMock()
-        message.author.bot = False
         message.author = MagicMock()
+        message.author.bot = False  # Set after creating the author mock
         message.guild = MagicMock()
         message.channel = MagicMock()
         message.attachments = []
@@ -231,6 +234,10 @@ class TestNescordBot:
     async def test_handle_voice_message_success(self):
         """Test successful voice message handling."""
         bot = NescordBot()
+        
+        # Mock logger and user for the test, keep config for max_audio_size_mb
+        bot.logger = MagicMock()
+        mock_user = MagicMock()
 
         # Mock message and attachment
         message = MagicMock()
@@ -248,12 +255,16 @@ class TestNescordBot:
 
         bot._send_voice_acknowledgment = AsyncMock()
 
-        await bot._handle_voice_message(message, attachment)
+        # Patch the user property for the duration of the method call
+        with patch.object(type(bot), 'user', new_callable=lambda: mock_user):
+            await bot._handle_voice_message(message, attachment)
 
-        message.add_reaction.assert_called_with("⏳")
+        # Check the sequence of calls
+        assert message.add_reaction.call_count == 2
+        message.add_reaction.assert_any_call("⏳")
+        message.add_reaction.assert_any_call("✅")
         bot._send_voice_acknowledgment.assert_called_once()
-        message.remove_reaction.assert_called_with("⏳", bot.user)
-        message.add_reaction.assert_called_with("✅")
+        message.remove_reaction.assert_called_with("⏳", mock_user)
 
     @pytest.mark.asyncio
     async def test_handle_voice_message_too_large(self):
@@ -482,11 +493,15 @@ class TestBotIntegration:
     async def test_message_processing_flow(self):
         """Test complete message processing flow."""
         bot = NescordBot()
+        
+        # Mock bot user and logger, keep config
+        bot.logger = MagicMock()
+        mock_user = MagicMock()
 
-        # Mock message with voice attachment
+        # Mock message with voice attachment - Set properties AFTER creating nested mocks
         message = MagicMock()
-        message.author.bot = False
         message.author = MagicMock()
+        message.author.bot = False  # Set after creating author mock
         message.guild = MagicMock()
         message.channel = MagicMock()
         message.add_reaction = AsyncMock()
@@ -504,7 +519,9 @@ class TestBotIntegration:
 
         bot.process_commands = AsyncMock()
 
-        await bot.on_message(message)
+        # Patch the user property for the duration of the method call
+        with patch.object(type(bot), 'user', new_callable=lambda: mock_user):
+            await bot.on_message(message)
 
         # Verify voice processing occurred
         message.add_reaction.assert_called()

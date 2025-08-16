@@ -172,7 +172,7 @@ class TestBotRunner:
         with patch("sys.platform", "win32"), patch("signal.signal") as mock_signal:
             runner.setup_signal_handlers()
 
-        # Should set up SIGINT and SIGBREAK handlers
+        # Should set up SIGINT and SIGTERM handlers (not SIGBREAK)
         assert mock_signal.call_count == 2
 
     @pytest.mark.asyncio
