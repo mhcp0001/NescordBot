@@ -88,7 +88,15 @@
       "Bash(gh label create:*)",
       "Bash(gh project list:*)",
       "Bash(gh project item-add:*)",
-      "Bash(gh api graphql:*)"
+      "Bash(gh api graphql:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue close:*)",
+      "Bash(poetry --version)",
+      "Bash(poetry install:*)",
+      "Bash(poetry run black:*)",
+      "Bash(poetry run flake8:*)",
+      "Bash(poetry run mypy:*)",
+      "Bash(poetry run pytest:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
