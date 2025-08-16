@@ -43,35 +43,41 @@
 
 ### 1.2 技術スタック
 
+#### Phase 1-2 (MVP基盤)
 - **言語**: Python 3.11+
 - **フレームワーク**: discord.py 2.3+
-- **ライブラリ**: 
-  - PyGithub (GitHub API操作)
-  - SQLAlchemy (ORM)
+- **基本ライブラリ**:
+  - aiohttp (非同期HTTP通信)
+  - aiosqlite (軽量DB)
   - Pydantic (設定管理・バリデーション)
-  - Structlog (構造化ログ)
-  - pytest (テスト)
+  - Python標準logging (ログ)
+  - pytest + pytest-asyncio (テスト)
   - Black, isort, flake8, mypy (コード品質)
 - **ツール**: 
   - Poetry (依存関係管理)
-  - Docker (コンテナ化)
-  - GitHub Actions (CI/CD)
+  - GitHub Actions (CI)
   - Railway (PaaS ホスティング)
+
+#### Phase 3-4 (拡張時に検討)
+- PyGithub → 非同期GitHub APIクライアント実装
+- SQLAlchemy + Alembic (複雑なデータ構造が必要になった場合)
+- Structlog (外部ログサービス連携時)
+- Docker (マルチ環境デプロイ時)
 
 ## 2. コンポーネント設計
 
 ### 2.1 コンポーネント一覧
 
-| コンポーネント名 | 責務 | 依存関係 |
-|---|---|---|
-| BotCore | Bot初期化、Cog管理、イベント処理 | ConfigManager, LoggerService |
-| ConfigManager | 設定読み込み、環境管理、バリデーション | Pydantic |
-| LoggerService | 構造化ログ、エラー追跡、監視 | Structlog |
-| DatabaseService | DB接続、マイグレーション、ORM | SQLAlchemy |
-| GitHubService | GitHub API操作、PR作成、認証 | PyGithub |
-| GeneralCog | 基本コマンド（ping, help, status） | BotCore |
-| GitHubCog | GitHub連携コマンド | GitHubService, DatabaseService |
-| VoiceCog | 音声処理、OpenAI API連携 | OpenAI API |
+| コンポーネント名 | 責務 | 依存関係 | 実装Phase |
+|---|---|---|---|
+| BotCore | Bot初期化、Cog管理、イベント処理 | ConfigManager, LoggerService | Phase 1 |
+| ConfigManager | 設定読み込み（起動時のみ）、環境管理、バリデーション | Pydantic | Phase 1 |
+| LoggerService | 標準ログ、エラー記録 | Python標準logging | Phase 1 |
+| DatabaseService | 軽量DB操作（Key-Value） | aiosqlite | Phase 2 |
+| GitHubService | 非同期GitHub API操作、レート制限管理、キャッシュ | aiohttp, aiocache | Phase 3 |
+| GeneralCog | 基本コマンド（ping, help, status） | BotCore | Phase 1 |
+| GitHubCog | GitHub連携コマンド | GitHubService, DatabaseService | Phase 3 |
+| VoiceCog | 音声処理、OpenAI API連携 | OpenAI API | Phase 4 |
 
 ### 2.2 各コンポーネントの詳細
 
@@ -94,7 +100,7 @@
 
 #### ConfigManager
 
-- **目的**: 環境別設定管理とバリデーション
+- **目的**: 起動時の設定読み込みとバリデーション
 - **公開インターフェース**:
   ```python
   class ConfigManager:
@@ -102,20 +108,26 @@
       def load_config(env: str = "production") -> BotConfig
       @staticmethod
       def validate_config(config: dict) -> BotConfig
-      def reload_config(self) -> None
+      # Hot reload機能は削除（YAGNI原則）
   ```
 - **内部実装方針**: 
   - Pydanticベースの型安全な設定
-  - 環境変数とファイル設定の階層管理
-  - Hot reloadサポート
+  - 環境変数と.envファイルの階層管理
+  - 起動時に一度だけ読み込み（再起動で設定変更を反映）
 
 #### GitHubService
 
-- **目的**: GitHub API操作の抽象化とエラーハンドリング
+- **目的**: 非同期GitHub API操作とレート制限管理
 - **公開インターフェース**:
   ```python
-  class GitHubService:
-      def __init__(self, token: str, rate_limit_manager: RateLimitManager)
+  from abc import ABC, abstractmethod
+  
+  class IGitHubService(ABC):  # テスト可能性のための抽象インターフェース
+      @abstractmethod
+      async def create_pr(...) -> PullRequest: ...
+  
+  class GitHubService(IGitHubService):
+      def __init__(self, token: str, session: aiohttp.ClientSession, cache: aiocache.Cache)
       async def create_pr(self, repo: str, title: str, body: str, 
                          files: Dict[str, str]) -> PullRequest
       async def create_branch(self, repo: str, branch_name: str, 
@@ -124,25 +136,30 @@
                            files: Dict[str, str], message: str) -> Commit
   ```
 - **内部実装方針**: 
-  - レート制限の自動管理
-  - リトライ機構とエラー回復
-  - 非同期処理対応
+  - aiohttp による完全非同期処理
+  - ETag活用とキャッシュによるレート制限対策
+  - 指数バックオフ付きリトライ機構
+  - カスタム例外（RateLimitExceeded, RepositoryNotFound等）
 
 #### DatabaseService
 
-- **目的**: データ永続化とマイグレーション管理
+- **目的**: 軽量なKey-Valueデータ永続化
 - **公開インターフェース**:
   ```python
   class DatabaseService:
-      def __init__(self, database_url: str)
+      def __init__(self, db_path: str = "nescord.db")
       async def initialize(self) -> None
-      async def migrate(self, version: str = "head") -> None
-      def get_session(self) -> AsyncSession
+      async def get(self, key: str) -> Optional[str]
+      async def set(self, key: str, value: str) -> None
+      async def delete(self, key: str) -> None
+      async def get_json(self, key: str) -> Optional[dict]
+      async def set_json(self, key: str, value: dict) -> None
   ```
 - **内部実装方針**: 
-  - SQLAlchemy 2.0+ 非同期ORM
-  - Alembicベースのマイグレーション
-  - 接続プール管理
+  - aiosqlite による軽量DB実装
+  - シンプルなKey-Valueテーブル構造
+  - JSONシリアライズ対応
+  - 将来的なマイグレーションはSQL文で管理
 
 ## 3. データフロー
 
@@ -222,19 +239,19 @@ class DiscordResponder:
 ### 5.2 エラー通知
 
 ```python
-@dataclass
-class ErrorReport:
-    error_type: str
-    error_message: str
-    context: Dict[str, Any]
-    timestamp: datetime
-    user_id: Optional[int]
-    channel_id: Optional[int]
-    
-class ErrorReporter:
-    async def report_error(self, error: Exception, context: ErrorContext)
-    async def send_user_friendly_error(self, channel: TextChannel, error: str)
-    async def alert_administrators(self, error: CriticalError)
+# グローバルエラーハンドラによる一元管理
+class BotCore(commands.Bot):
+    async def on_command_error(self, ctx: Context, error: Exception):
+        """Discord.pyのグローバルエラーハンドラ"""
+        if isinstance(error, commands.CommandNotFound):
+            await ctx.send("❓ コマンドが見つかりません")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send(f"⚠️ 必要な引数が不足: {error.param.name}")
+        elif isinstance(error, RateLimitExceeded):
+            await ctx.send("⏳ APIレート制限中です。少し待ってから再試行してください")
+        else:
+            logger.error(f"Unexpected error: {error}", exc_info=True)
+            await ctx.send("❌ 予期せぬエラーが発生しました")
 ```
 
 ## 6. セキュリティ設計
@@ -258,30 +275,37 @@ class SecurityManager:
 
 ### 7.1 単体テスト
 
-- **カバレッジ目標**: 80%以上
+- **カバレッジ目標**: 
+  - Phase 1-2: 60%以上（基本機能の動作確認重視）
+  - Phase 3-4: 80%以上（安定性向上）
 - **テストフレームワーク**: pytest + pytest-asyncio + pytest-mock
 - **テスト構成**:
   ```python
   tests/
   ├── unit/
   │   ├── test_config_manager.py
-  │   ├── test_github_service.py
-  │   └── test_database_service.py
+  │   ├── test_database_service.py  # Phase 2
+  │   └── test_github_service.py    # Phase 3
   ├── integration/
-  │   ├── test_github_cog.py
-  │   └── test_bot_lifecycle.py
+  │   ├── test_general_cog.py        # Phase 1
+  │   ├── test_github_cog.py         # Phase 3
+  │   └── test_bot_lifecycle.py      # Phase 1
   └── fixtures/
       ├── config_samples.py
-      └── mock_responses.py
+      └── mock_github_responses.py    # Phase 3
   ```
 
 ### 7.2 統合テスト
 
 ```python
 class IntegrationTestSuite:
+    # Phase 1
+    async def test_bot_startup_and_commands(self)
+    # Phase 3
     async def test_end_to_end_pr_creation(self)
+    async def test_rate_limit_handling(self)
+    # Phase 4
     async def test_error_recovery_scenarios(self)
-    async def test_configuration_reload(self)
 ```
 
 ## 8. パフォーマンス最適化
@@ -289,24 +313,39 @@ class IntegrationTestSuite:
 ### 8.1 想定される負荷
 
 - **同時実行**: 10-50 Discord コマンド/分
-- **GitHub API**: 100 リクエスト/時（レート制限内）
-- **メモリ使用量**: < 512MB (Railway制限)
+- **GitHub API**: 5000 リクエスト/時（認証済みレート制限）
+- **メモリ使用量**: < 512MB (Railway Free Plan制限)
 - **応答時間**: < 5秒（GitHub PR作成）
 
 ### 8.2 最適化方針
 
 ```python
-class PerformanceOptimizer:
-    # 接続プール管理
-    github_client_pool: aiohttp.ClientSession
-    database_pool: AsyncEngine
+class GitHubService:
+    def __init__(self, token: str):
+        # 接続プール管理
+        self.session = aiohttp.ClientSession(
+            headers={"Authorization": f"token {token}"},
+            connector=aiohttp.TCPConnector(limit=10, limit_per_host=5)
+        )
+        # キャッシュ設定（ETag活用）
+        self.cache = aiocache.SimpleMemoryCache()
+        self.etag_cache: Dict[str, str] = {}
     
-    # キャッシュ戦略
-    @lru_cache(maxsize=100)
-    def get_repository_info(self, repo_name: str) -> RepoInfo
-    
-    # 非同期処理
-    async def batch_process_requests(self, requests: List[Request]) -> List[Result]
+    async def _request_with_cache(self, url: str) -> dict:
+        """ETagを使用した条件付きリクエスト"""
+        headers = {}
+        if url in self.etag_cache:
+            headers["If-None-Match"] = self.etag_cache[url]
+        
+        async with self.session.get(url, headers=headers) as resp:
+            if resp.status == 304:  # Not Modified
+                return await self.cache.get(url)
+            elif resp.status == 200:
+                data = await resp.json()
+                if etag := resp.headers.get("ETag"):
+                    self.etag_cache[url] = etag
+                    await self.cache.set(url, data, ttl=300)
+                return data
 ```
 
 ## 9. デプロイメント
@@ -384,24 +423,107 @@ class BotConfig(BaseSettings):
 - **メトリクス**: 重要な処理の実行時間と成功率を記録
 - **アラート**: 重要なエラーは即座に通知
 
-## 11. Phase別実装方針
+## 11. 実装上の重要な設計判断
 
-### Phase 1: MVP基盤（2週間）
-- BotCore, ConfigManager, LoggerService の基本実装
-- GeneralCog (ping, help, status) の実装
-- 基本的なCI/CD構築
+### 11.1 技術選定の根拠
 
-### Phase 2: 開発基盤強化（2週間）  
-- DatabaseService, テスト基盤の実装
-- コード品質ツールの統合
-- 設定管理システムの完成
+#### なぜPyGithubではなくaiohttp直接実装か
+- **PyGithubは同期ライブラリ**: Discord Botの非同期処理をブロックする
+- **柔軟性**: GitHub APIの新機能への即座の対応
+- **キャッシュ制御**: ETagベースの条件付きリクエストを完全制御
+- **レート制限管理**: 429エラーのリトライ戦略を柔軟に実装
 
-### Phase 3: GitHub連携機能（2週間）
-- GitHubService, GitHubCog の実装  
-- PR作成機能の完成
-- Railway自動デプロイの実装
+#### なぜSQLAlchemyではなくaiosqliteか
+- **シンプルさ**: Key-Value程度のデータにORMは過剰
+- **学習曲線**: 新規参加者が理解しやすい
+- **依存関係**: ライブラリ依存を最小限に
+- **将来性**: 複雑化したら段階的に移行可能
 
-### Phase 4: 運用基盤完成（2週間）
-- 監視・アラートシステム
-- パフォーマンス最適化
-- ドキュメント整備と運用手順確立
+#### なぜStructlogではなく標準loggingか
+- **YAGNI原則**: 構造化ログの必要性が明確でない
+- **設定の簡潔さ**: 標準loggingは設定がシンプル
+- **互換性**: 他のライブラリとの統合が容易
+- **移行容易性**: 必要時にStructlogへ移行可能
+
+### 11.2 アーキテクチャパターン
+
+#### 依存性注入（DI）
+```python
+class BotCore(commands.Bot):
+    def __init__(self, config: BotConfig, services: ServiceContainer):
+        self.config = config
+        self.services = services  # 全サービスをコンテナで管理
+        super().__init__(...)
+```
+
+#### インターフェース分離
+```python
+# 抽象インターフェースでテスト可能性を確保
+class IGitHubService(ABC):
+    @abstractmethod
+    async def create_pr(...): ...
+
+# 本番用実装
+class GitHubService(IGitHubService): ...
+
+# テスト用モック
+class MockGitHubService(IGitHubService): ...
+```
+
+### 11.3 非機能要件の実装戦略
+
+#### セキュリティ
+- **トークン管理**: 環境変数のみ、ハードコード禁止
+- **入力検証**: Pydanticによる型検証 + カスタムバリデータ
+- **ログマスキング**: センシティブ情報の自動マスク
+
+#### 可用性
+- **グレースフルシャットダウン**: SIGTERMハンドリング
+- **ヘルスチェック**: `/health`エンドポイント実装
+- **エラー回復**: 接続断時の自動再接続
+
+#### 保守性
+- **設定の外部化**: 環境変数と設定ファイルの分離
+- **バージョニング**: Semantic Versioning準拠
+- **ドキュメント**: docstring + 型ヒント必須
+
+## 12. Phase別実装方針
+
+### Phase 1: MVP基盤 + 最初の機能（2週間）
+- **Week 1**: 
+  - BotCore, ConfigManager (シンプル版), LoggerService (標準logging)
+  - GeneralCog (ping, help, status)
+  - GitHub Actions CI設定
+- **Week 2**:
+  - 簡単な拡張コマンド実装（サーバー情報表示等）
+  - エラーハンドリング基盤
+  - Railwayへの手動デプロイ
+
+### Phase 2: 開発基盤強化 + 機能追加（2週間）  
+- **Week 1**:
+  - DatabaseService (aiosqlite版)
+  - テスト基盤構築 (pytest + pytest-asyncio)
+  - コード品質ツール統合 (black, flake8, mypy)
+- **Week 2**:
+  - ログ閲覧コマンド等の新機能
+  - 設定永続化機能
+
+### Phase 3: GitHub連携機能 + CD導入（2週間）
+- **Week 1**:
+  - GitHubService (aiohttp + aiocache版)
+  - レート制限管理、キャッシュ実装
+  - Railway CDパイプライン
+- **Week 2**:
+  - GitHubCog 実装
+  - Obsidian VaultへのPR作成機能
+  - 統合テスト
+
+### Phase 4: 運用基盤完成 + 本格運用（2週間）
+- **Week 1**:
+  - VoiceCog (OpenAI API連携)
+  - ヘルスチェックエンドポイント
+  - メトリクス収集
+- **Week 2**:
+  - ドキュメント整備
+  - パフォーマンスチューニング
+  - 本番環境最適化
