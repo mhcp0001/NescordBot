@@ -19,12 +19,12 @@ except ImportError:
     # Fallback for Railway deployment
     import sys
     from pathlib import Path
-    
+
     # Add parent directory to path
     parent_path = str(Path(__file__).parent.parent)
     if parent_path not in sys.path:
         sys.path.insert(0, parent_path)
-    
+
     try:
         from src.config import get_config_manager
         from src.logger import get_logger

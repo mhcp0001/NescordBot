@@ -18,11 +18,11 @@ except ImportError:
     # Fallback for Railway deployment
     import sys
     from pathlib import Path
-    
+
     parent_path = str(Path(__file__).parent.parent.parent)
     if parent_path not in sys.path:
         sys.path.insert(0, parent_path)
-    
+
     try:
         from src.logger import get_logger
     except ImportError:
