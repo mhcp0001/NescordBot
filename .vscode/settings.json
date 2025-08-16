@@ -1,20 +1,55 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
   "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.defaultFormatter": "ms-python.black-formatter",
     "editor.formatOnSave": true,
     "editor.codeActionsOnSave": {
-      "source.fixAll": "explicit",
-      "source.organizeImports": "explicit"
-    }
+      "source.fixAll.ruff": "explicit",
+      "source.organizeImports.ruff": "explicit",
+      "source.organizeImports.isort": "explicit"
+    },
+    "editor.rulers": [100]
   },
+  
+  // Linting - 複数ツールでチェック
   "python.linting.enabled": true,
   "python.linting.ruffEnabled": true,
+  "python.linting.mypyEnabled": true,
+  "python.linting.flake8Enabled": false,
+  
+  // MyPy設定
+  "python.linting.mypyArgs": [
+    "--ignore-missing-imports",
+    "--check-untyped-defs"
+  ],
+  
+  // Testing
   "python.testing.pytestEnabled": true,
   "python.testing.pytestArgs": [
-    "tests"
+    "tests",
+    "-v"
   ],
+  "python.testing.unittestEnabled": false,
+  "python.testing.autoTestDiscoverOnSaveEnabled": true,
+  
+  // Ruff設定
   "ruff.lint.enable": true,
   "ruff.format.enable": true,
-  "ruff.showNotifications": "always"
+  "ruff.showNotifications": "always",
+  "ruff.lint.run": "onSave",
+  
+  // Black設定
+  "black-formatter.args": ["--line-length=100"],
+  
+  // isort設定
+  "isort.args": ["--profile=black", "--line-length=100"],
+  
+  // その他設定
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "files.trimFinalNewlines": true,
+  
+  // タスク自動実行
+  "python.terminal.activateEnvironment": true,
+  "python.analysis.autoImportCompletions": true
 }

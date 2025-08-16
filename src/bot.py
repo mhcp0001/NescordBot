@@ -29,8 +29,8 @@ except ImportError:
         from src.logger import get_logger
     except ImportError:
         # Direct import as last resort
-        from config import get_config_manager
-        from logger import get_logger
+        from config import get_config_manager  # type: ignore
+        from logger import get_logger  # type: ignore
 
 
 class NescordBot(commands.Bot):

@@ -1,0 +1,22 @@
+[
+  {
+    "key": "ctrl+shift+q",
+    "command": "workbench.action.tasks.runTask",
+    "args": "🎯 Quick Check (All Tools)"
+  },
+  {
+    "key": "ctrl+shift+f",
+    "command": "workbench.action.tasks.runTask", 
+    "args": "🔧 Auto Fix (Format + Lint)"
+  },
+  {
+    "key": "ctrl+shift+t",
+    "command": "workbench.action.tasks.runTask",
+    "args": "🔍 Type Check (MyPy)"
+  },
+  {
+    "key": "ctrl+shift+r",
+    "command": "workbench.action.tasks.runTask",
+    "args": "🧪 Run Tests"
+  }
+]

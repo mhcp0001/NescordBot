@@ -26,7 +26,7 @@ except ImportError:
     try:
         from src.logger import get_logger
     except ImportError:
-        from logger import get_logger
+        from logger import get_logger  # type: ignore
 
 
 class General(commands.Cog):

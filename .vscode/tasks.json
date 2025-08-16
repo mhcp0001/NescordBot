@@ -1,0 +1,95 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "🎯 Quick Check (All Tools)",
+      "type": "shell",
+      "command": "poetry",
+      "args": [
+        "run",
+        "python",
+        "-c",
+        "import subprocess; subprocess.run(['poetry', 'run', 'black', '--check', 'src/', 'tests/']); subprocess.run(['poetry', 'run', 'isort', '--check-only', 'src/', 'tests/']); subprocess.run(['poetry', 'run', 'ruff', 'check', 'src/', 'tests/']); subprocess.run(['poetry', 'run', 'mypy', 'src/'])"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔧 Auto Fix (Format + Lint)",
+      "type": "shell",
+      "command": "poetry",
+      "args": [
+        "run",
+        "python",
+        "-c",
+        "import subprocess; subprocess.run(['poetry', 'run', 'black', 'src/', 'tests/']); subprocess.run(['poetry', 'run', 'isort', 'src/', 'tests/']); subprocess.run(['poetry', 'run', 'ruff', 'check', '--fix', 'src/', 'tests/'])"
+      ],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🔍 Type Check (MyPy)",
+      "type": "shell",
+      "command": "poetry",
+      "args": ["run", "mypy", "src/", "--ignore-missing-imports"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": ["$mypy"]
+    },
+    {
+      "label": "🧪 Run Tests",
+      "type": "shell",
+      "command": "poetry",
+      "args": ["run", "pytest", "tests/", "-v", "--cov=src"],
+      "group": "test",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "🚀 Pre-commit Check",
+      "type": "shell",
+      "command": "poetry",
+      "args": ["run", "pre-commit", "run", "--all-files"],
+      "group": "build",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    }
+  ]
+}
