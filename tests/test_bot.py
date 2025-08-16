@@ -177,7 +177,7 @@ class TestNescordBot:
     async def test_on_message_user_message(self):
         """Test on_message processes user messages."""
         bot = NescordBot()
-        
+
         # Mock only logger to avoid initialization issues, keep config
         bot.logger = MagicMock()
 
@@ -234,7 +234,7 @@ class TestNescordBot:
     async def test_handle_voice_message_success(self):
         """Test successful voice message handling."""
         bot = NescordBot()
-        
+
         # Mock logger and user for the test, keep config for max_audio_size_mb
         bot.logger = MagicMock()
         mock_user = MagicMock()
@@ -256,7 +256,7 @@ class TestNescordBot:
         bot._send_voice_acknowledgment = AsyncMock()
 
         # Patch the user property for the duration of the method call
-        with patch.object(type(bot), 'user', new_callable=lambda: mock_user):
+        with patch.object(type(bot), "user", new_callable=lambda: mock_user):
             await bot._handle_voice_message(message, attachment)
 
         # Check the sequence of calls
@@ -493,7 +493,7 @@ class TestBotIntegration:
     async def test_message_processing_flow(self):
         """Test complete message processing flow."""
         bot = NescordBot()
-        
+
         # Mock bot user and logger, keep config
         bot.logger = MagicMock()
         mock_user = MagicMock()
@@ -520,7 +520,7 @@ class TestBotIntegration:
         bot.process_commands = AsyncMock()
 
         # Patch the user property for the duration of the method call
-        with patch.object(type(bot), 'user', new_callable=lambda: mock_user):
+        with patch.object(type(bot), "user", new_callable=lambda: mock_user):
             await bot.on_message(message)
 
         # Verify voice processing occurred
