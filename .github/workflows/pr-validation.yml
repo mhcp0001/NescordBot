@@ -1,0 +1,119 @@
+name: PR Validation
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  validate-pr:
+    name: Validate PR Requirements
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check PR description for issue reference
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+
+            // Check for "Closes #number" pattern
+            const hasCloseRef = /(?:Closes|closes|Fixes|fixes|Resolves|resolves)\s+#\d+/.test(body);
+
+            if (!hasCloseRef) {
+              core.setFailed(
+                '❌ PR must include issue closure reference (e.g., "Closes #123") in the description.\n' +
+                'See CLAUDE.md for GitHub management rules.'
+              );
+              return;
+            }
+
+            console.log('✅ PR description contains proper issue reference');
+
+      - name: Validate commit messages
+        run: |
+          echo "🔍 Checking commit messages for issue references..."
+
+          # Get all commits in this PR
+          commits=$(git log --format="%H %s" origin/${{ github.base_ref }}..HEAD)
+
+          if [ -z "$commits" ]; then
+            echo "❌ No commits found in PR"
+            exit 1
+          fi
+
+          echo "Found commits:"
+          echo "$commits"
+          echo ""
+
+          # Check each commit message
+          error_found=false
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              commit_hash=$(echo "$line" | cut -d' ' -f1)
+              commit_msg=$(echo "$line" | cut -d' ' -f2-)
+
+              echo "Checking: $commit_msg"
+
+              # Check for (refs #number) pattern
+              if ! echo "$commit_msg" | grep -qE '\(refs #[0-9]+\)'; then
+                echo "❌ Commit missing issue reference: $commit_msg"
+                echo "   Required format: type(scope): description (refs #issue-number)"
+                error_found=true
+              else
+                echo "✅ Valid format: $commit_msg"
+              fi
+            fi
+          done <<< "$commits"
+
+          if [ "$error_found" = true ]; then
+            echo ""
+            echo "❌ One or more commits are missing issue references."
+            echo "All commits must follow the format: type(scope): description (refs #issue-number)"
+            echo "Examples:"
+            echo "  feat(github): GitHub API統合を実装 (refs #51)"
+            echo "  fix(voice): 音声処理を修正 (refs #52)"
+            echo ""
+            echo "See CLAUDE.md for complete GitHub management rules."
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All commit messages contain proper issue references"
+
+      - name: Check PR title format
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const title = pr.title;
+
+            // Check for conventional commit format in title
+            const conventionalPattern = /^(feat|fix|docs|style|refactor|test|chore)(\(\w+\))?: .+/;
+
+            if (!conventionalPattern.test(title)) {
+              core.setFailed(
+                '❌ PR title must follow conventional commit format.\n' +
+                'Expected: type(scope): description\n' +
+                'Examples:\n' +
+                '  feat(github): GitHub API統合を実装\n' +
+                '  fix(voice): 音声処理を修正\n' +
+                '  docs: README.mdを更新'
+              );
+              return;
+            }
+
+            console.log('✅ PR title follows conventional commit format');
+
+      - name: Summary
+        run: |
+          echo "🎉 All PR validation checks passed!"
+          echo ""
+          echo "✅ PR description contains issue closure reference"
+          echo "✅ All commits contain issue references"
+          echo "✅ PR title follows conventional commit format"

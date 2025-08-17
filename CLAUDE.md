@@ -135,17 +135,34 @@ gh pr merge --auto --squash --delete-branch
   - `fix/456-voice-api-error`
   - `docs/789-update-readme`
 
-### Commit Message Standard
-- **Format**: `type: description (refs #issue-number)`
+### Commit Message Standard (厳格化)
+- **Format**: `type(scope): description (refs #issue-number)` **（Issue参照必須）**
 - **Types**: feat, fix, docs, style, refactor, test, chore
+- **Scope**: Optional module name (e.g., github, voice, admin)
 - **Language**: Japanese description with English type prefix
+- **Issue参照**: すべてのコミットに `(refs #issue-number)` を含める（例外なし）
 - **Auto-linking**: `(refs #123)` creates automatic GitHub links
 
-### PR Requirements
-- **Title**: Match commit convention (`type: description`)
-- **Body**: Must include `Closes #issue-number` for auto-closure
+#### 例
+```bash
+feat(github): GitHub API統合の基本実装 (refs #51)
+fix(voice): 音声処理のタイムアウト問題を修正 (refs #52)
+docs: Phase 3タスクリストを更新 (refs #53)
+test(admin): 管理者権限テストを追加 (refs #54)
+```
+
+### PR Requirements (強化)
+- **Title**: Match commit convention (`type(scope): description`)
+- **Body**: Must include `Closes #issue-number` for auto-closure **（必須）**
 - **Template**: Use provided PR template for comprehensive information
 - **Labels**: Auto-assigned based on branch type
+- **Validation**: GitHub Actions will verify Issue reference in commits and PR body
+
+#### PR作成時の必須チェック項目
+1. すべてのコミットに `(refs #issue-number)` が含まれているか
+2. PR本文に `Closes #issue-number` が含まれているか
+3. CI/CDテストが全て成功しているか
+4. コードレビューが完了しているか
 
 ### GitHub Features Integration
 
@@ -255,11 +272,20 @@ gh project list --owner @me
 gh project list --owner ORG_NAME
 ```
 
-### Quality Assurance
+### Quality Assurance (厳格化)
 - **MANDATORY**: All PRs must pass CI/CD checks
 - **MANDATORY**: Include test results in PR description
 - **MANDATORY**: Use `Closes #number` in PR body for auto-closure
+- **MANDATORY**: All commits must include `(refs #issue-number)` - no exceptions
+- **MANDATORY**: Pre-commit hooks must pass (commit message validation)
+- **MANDATORY**: GitHub Actions PR validation must pass
 - **RECOMMENDED**: Enable auto-merge for streamlined workflow
+
+### Pre-commit Hooks Integration
+- **Installation**: `poetry add --group dev pre-commit`
+- **Setup**: `pre-commit install --hook-type commit-msg`
+- **Validation**: Automatic commit message format checking
+- **Bypass**: Not allowed - all commits must follow the standard
 
 ### Migration Benefits
 - **70% time reduction** in issue management tasks

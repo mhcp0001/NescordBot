@@ -1,4 +1,14 @@
 repos:
+  - repo: local
+    hooks:
+      - id: check-commit-msg
+        name: Check commit message format
+        entry: python scripts/check_commit_msg.py
+        language: system
+        stages: [commit-msg]
+        pass_filenames: false
+        args: ['.git/COMMIT_EDITMSG']
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.5.0
     hooks:
