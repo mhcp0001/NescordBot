@@ -63,7 +63,7 @@ class TestAdminCog:
         interaction = AsyncMock()
         interaction.response = AsyncMock()
         interaction.followup = AsyncMock()
-        interaction.user = MagicMock()
+        interaction.user = MagicMock(spec=discord.Member)
         interaction.user.id = 987654321
         interaction.guild = MagicMock()
         interaction.user.guild_permissions = MagicMock()
@@ -131,10 +131,14 @@ class TestAdminCog:
 
     async def test_logs_command_with_file(self, admin_cog, mock_interaction, temp_log_file):
         """Test logs command with actual log file."""
-        # Mock the log file path
-        admin_cog.bot.data_dir = temp_log_file.parent
+        # Create proper directory structure: data_dir.parent/logs/bot.log
+        test_data_dir = temp_log_file.parent / "data"
+        test_data_dir.mkdir(exist_ok=True)
         logs_dir = temp_log_file.parent / "logs"
         logs_dir.mkdir(exist_ok=True)
+
+        # Set bot data_dir correctly
+        admin_cog.bot.data_dir = test_data_dir
 
         # Copy temp file to expected location
         log_file = logs_dir / "bot.log"
@@ -149,14 +153,18 @@ class TestAdminCog:
 
             # Check that embed was created with logs
             call_args = mock_interaction.followup.send.call_args
-            assert "embed" in call_args[1]
-            embed = call_args[1]["embed"]
+            kwargs = call_args.kwargs if hasattr(call_args, "kwargs") else call_args[1]
+            assert "embed" in kwargs
+            embed = kwargs["embed"]
             assert embed.title.startswith("📋 最新のログ")
 
         finally:
             # Cleanup
             log_file.unlink(missing_ok=True)
-            logs_dir.rmdir()
+            if logs_dir.exists() and not any(logs_dir.iterdir()):
+                logs_dir.rmdir()
+            if test_data_dir.exists() and not any(test_data_dir.iterdir()):
+                test_data_dir.rmdir()
 
     async def test_logs_command_no_file(self, admin_cog, mock_interaction):
         """Test logs command when log file doesn't exist."""
@@ -276,8 +284,8 @@ class TestAdminCog:
         admin_role.id = 555555555
         mock_interaction.user.roles = [admin_role]
 
-        # Mock database returning admin roles
-        admin_cog.bot.database_service.get_json.return_value = [555555555]
+        # Mock database returning admin roles (async mock)
+        admin_cog.bot.database_service.get_json = AsyncMock(return_value=[555555555])
 
         result = await admin_cog._check_admin_permissions(mock_interaction)
         assert result is True

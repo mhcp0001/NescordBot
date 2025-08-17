@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+import discord
 import pytest
 
 from nescordbot.cogs.admin import AdminCog
@@ -107,9 +108,9 @@ class TestAdminFunctionality:
 
     async def test_admin_permission_check_administrator(self, admin_cog):
         """Test admin permission check for guild administrator."""
-        # Mock interaction
+        # Mock interaction with proper Member type
         mock_interaction = MagicMock()
-        mock_interaction.user = MagicMock()
+        mock_interaction.user = MagicMock(spec=discord.Member)
         mock_interaction.user.id = 987654321  # Different from bot owner
         mock_interaction.guild = MagicMock()
         mock_interaction.user.guild_permissions = MagicMock()
@@ -217,9 +218,9 @@ class TestAdminFunctionality:
 
     async def test_permission_with_custom_admin_roles(self, admin_cog):
         """Test permission check with custom admin roles."""
-        # Mock interaction
+        # Mock interaction with proper Member type
         mock_interaction = MagicMock()
-        mock_interaction.user = MagicMock()
+        mock_interaction.user = MagicMock(spec=discord.Member)
         mock_interaction.user.id = 987654321
         mock_interaction.guild = MagicMock()
         mock_interaction.user.guild_permissions = MagicMock()
@@ -237,8 +238,8 @@ class TestAdminFunctionality:
 
         admin_cog.bot.application_info = AsyncMock(return_value=app_info)
 
-        # Database returns matching admin role
-        admin_cog.bot.database_service.get_json.return_value = [555555555]
+        # Database returns matching admin role (async mock)
+        admin_cog.bot.database_service.get_json = AsyncMock(return_value=[555555555])
 
         result = await admin_cog._check_admin_permissions(mock_interaction)
         assert result is True
