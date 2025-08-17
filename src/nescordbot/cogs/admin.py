@@ -261,7 +261,7 @@ class AdminCog(commands.Cog):
                 await interaction.edit_original_response(embed=embed, view=None)
             else:
                 embed = discord.Embed(
-                    title="❌ 操作がキャンセルされました", color=discord.Color.grey(), timestamp=datetime.now()
+                    title="❌ 操作がキャンセルされました", color=discord.Color.greyple(), timestamp=datetime.now()
                 )
 
                 await interaction.edit_original_response(embed=embed, view=None)
@@ -278,18 +278,19 @@ class AdminCog(commands.Cog):
             return True
 
         # Check if user has administrator permissions
-        if interaction.guild and interaction.user.guild_permissions.administrator:
-            return True
+        if interaction.guild and isinstance(interaction.user, discord.Member):
+            if interaction.user.guild_permissions.administrator:
+                return True
 
-        # Check custom admin roles (stored in database)
-        try:
-            admin_roles = await self.bot.database_service.get_json("admin_roles")
-            if admin_roles and interaction.guild:
-                user_role_ids = [role.id for role in interaction.user.roles]
-                if any(role_id in admin_roles for role_id in user_role_ids):
-                    return True
-        except Exception:
-            pass  # Ignore database errors for permission checks
+            # Check custom admin roles (stored in database)
+            try:
+                admin_roles = await self.bot.database_service.get_json("admin_roles")
+                if admin_roles:
+                    user_role_ids = [role.id for role in interaction.user.roles]
+                    if any(role_id in admin_roles for role_id in user_role_ids):
+                        return True
+            except Exception:
+                pass  # Ignore database errors for permission checks
 
         return False
 
@@ -323,7 +324,8 @@ class ConfirmationView(discord.ui.View):
         """Handle timeout."""
         self.confirmed = False
         for item in self.children:
-            item.disabled = True
+            if hasattr(item, "disabled"):
+                item.disabled = True
 
 
 async def setup(bot):

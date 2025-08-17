@@ -355,7 +355,8 @@ class DatabaseService(IDataStore):
             try:
                 # Count total keys
                 cursor = await self.connection.execute("SELECT COUNT(*) FROM kv_store")
-                total_keys = (await cursor.fetchone())[0]
+                row = await cursor.fetchone()
+                total_keys = row[0] if row else 0
                 await cursor.close()
 
                 # Get database file size (if not in-memory)
