@@ -107,7 +107,10 @@
       "mcp__serena__onboarding",
       "mcp__serena__list_dir",
       "mcp__serena__get_symbols_overview",
-      "mcp__serena__write_memory"
+      "mcp__serena__write_memory",
+      "mcp__serena__find_symbol",
+      "Bash(cp:*)",
+      "mcp__serena__activate_project"
     ],
     "deny": [
       "Bash(> /etc/*)",
