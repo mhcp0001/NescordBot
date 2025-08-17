@@ -8,13 +8,14 @@ integrated configuration management and logging services.
 import asyncio
 import traceback
 from pathlib import Path
+from typing import Optional
 
 import discord
 from discord.ext import commands
 
 from .config import get_config_manager
 from .logger import get_logger
-from .services import DatabaseService
+from .services import DatabaseService, GitHubService
 
 
 class NescordBot(commands.Bot):
@@ -55,6 +56,18 @@ class NescordBot(commands.Bot):
         db_path = self.config.database_url if hasattr(self.config, "database_url") else "nescord.db"
         self.database_service = DatabaseService(db_path)
 
+        # Initialize GitHub service if configured
+        self.github_service: Optional[GitHubService] = None
+        if (
+            self.config.github_token
+            and self.config.github_repo_owner
+            and self.config.github_repo_name
+        ):
+            self.github_service = GitHubService(self.config)
+            self.logger.info("GitHub service initialized")
+        else:
+            self.logger.info("GitHub integration disabled (missing configuration)")
+
         self.logger.info("NescordBot instance created")
 
     async def setup_hook(self) -> None:
@@ -70,6 +83,11 @@ class NescordBot(commands.Bot):
             # Initialize database service
             await self.database_service.initialize()
             self.logger.info("Database service initialized")
+
+            # Start GitHub service if available
+            if self.github_service:
+                await self.github_service.start()
+                self.logger.info("GitHub service started")
 
             # Load cogs
             await self._load_cogs()
@@ -270,6 +288,11 @@ class NescordBot(commands.Bot):
         if hasattr(self, "database_service") and self.database_service.is_initialized:
             await self.database_service.close()
             self.logger.info("Database service closed")
+
+        # Stop GitHub service
+        if hasattr(self, "github_service") and self.github_service:
+            await self.github_service.stop()
+            self.logger.info("GitHub service stopped")
 
         await super().close()
         self.logger.info("Bot shutdown complete")
