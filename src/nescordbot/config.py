@@ -33,9 +33,10 @@ class BotConfig(BaseModel):
     # Database settings (for future use)
     database_url: str = Field(default="sqlite:///data/nescordbot.db", description="Database URL")
 
-    # GitHub integration settings (for future use)
+    # GitHub integration settings
     github_token: Optional[str] = Field(default=None, description="GitHub API token")
-    github_repo: Optional[str] = Field(default=None, description="GitHub repository")
+    github_repo_owner: Optional[str] = Field(default=None, description="GitHub repository owner")
+    github_repo_name: Optional[str] = Field(default=None, description="GitHub repository name")
 
     # Obsidian integration settings (for future use)
     obsidian_vault_path: Optional[str] = Field(default=None, description="Obsidian vault path")
@@ -140,7 +141,8 @@ class ConfigManager:
                 speech_language=os.getenv("SPEECH_LANGUAGE", "ja"),
                 database_url=os.getenv("DATABASE_URL", "sqlite:///data/nescordbot.db"),
                 github_token=os.getenv("GITHUB_TOKEN"),
-                github_repo=os.getenv("GITHUB_REPO"),
+                github_repo_owner=os.getenv("GITHUB_REPO_OWNER"),
+                github_repo_name=os.getenv("GITHUB_REPO_NAME"),
                 obsidian_vault_path=os.getenv("OBSIDIAN_VAULT_PATH"),
             )
         return self._config
@@ -178,9 +180,13 @@ class ConfigManager:
         """Get GitHub API token."""
         return self.config.github_token
 
-    def get_github_repo(self) -> Optional[str]:
-        """Get GitHub repository."""
-        return self.config.github_repo
+    def get_github_repo_owner(self) -> Optional[str]:
+        """Get GitHub repository owner."""
+        return self.config.github_repo_owner
+
+    def get_github_repo_name(self) -> Optional[str]:
+        """Get GitHub repository name."""
+        return self.config.github_repo_name
 
     def get_obsidian_vault_path(self) -> Optional[str]:
         """Get Obsidian vault path."""
