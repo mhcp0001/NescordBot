@@ -258,12 +258,3 @@ def main() -> int:
     except Exception as e:
         print(f"❌ Fatal startup error: {e}")
         return 1
-
-
-if __name__ == "__main__":
-    exit_code = main()
-    if exit_code != 0:
-        print(f"\n❌ Bot exited with code {exit_code}")
-    else:
-        print("\n✅ Bot shutdown complete")
-    sys.exit(exit_code)

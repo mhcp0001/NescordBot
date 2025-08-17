@@ -370,17 +370,18 @@ class TestRunnerIntegration:
             # Make the bot main return quickly
             mock_bot_main.return_value = None
 
-            # Start the runner but trigger shutdown immediately
-            start_task = asyncio.create_task(runner.start())
+            async def shutdown_after_delay():
+                """Trigger shutdown after initialization."""
+                await asyncio.sleep(0.1)
+                await runner._shutdown()
 
-            # Give it a moment to initialize
-            await asyncio.sleep(0.1)
+            # Use gather to manage both tasks under pytest-asyncio control
+            results = await asyncio.gather(
+                runner.start(), shutdown_after_delay(), return_exceptions=True
+            )
 
-            # Trigger shutdown
-            await runner._shutdown()
-
-            # Wait for completion
-            result = await start_task
+            # Extract the result from start() - should be first result if no exception
+            result = results[0] if not isinstance(results[0], Exception) else 1
 
             assert result == 0
 
