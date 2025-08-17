@@ -102,7 +102,12 @@
       "Bash(gh api:*)",
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__onboarding",
+      "mcp__serena__list_dir",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__write_memory"
     ],
     "deny": [
       "Bash(> /etc/*)",
