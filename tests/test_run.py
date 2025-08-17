@@ -11,10 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from run import BotRunner, main  # noqa: E402
+from nescordbot.main import BotRunner, main
 
 
 class TestBotRunner:

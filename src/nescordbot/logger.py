@@ -13,7 +13,7 @@ from typing import Optional
 
 import colorlog
 
-from src.config import get_config_manager
+from .config import get_config_manager
 
 
 class LoggerService:

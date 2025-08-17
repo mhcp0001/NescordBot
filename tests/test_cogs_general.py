@@ -11,7 +11,7 @@ import pytest
 from discord import app_commands
 from discord.ext import commands
 
-from src.cogs.general import General
+from nescordbot.cogs.general import General
 
 
 class TestGeneralCog:

@@ -13,7 +13,7 @@ import discord
 import pytest
 from discord.ext import commands
 
-from src.cogs.admin import AdminCog, ConfirmationView
+from nescordbot.cogs.admin import AdminCog, ConfirmationView
 
 
 class TestAdminCog:

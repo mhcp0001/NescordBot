@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, phase2-development ]
   pull_request:
     branches: [ main ]
 
@@ -216,9 +216,7 @@ jobs:
       run: |
         # Test that the bot can be imported and basic validation works
         poetry run python -c "
-        import sys
-        sys.path.insert(0, 'src')
-        from run import BotRunner
+        from nescordbot.main import BotRunner
         runner = BotRunner()
         runner.setup_logging()
         print('✅ Bot runner can be initialized')

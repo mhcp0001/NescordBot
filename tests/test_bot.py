@@ -12,7 +12,7 @@ import discord
 import pytest
 from discord.ext import commands
 
-from src.bot import NescordBot, main
+from nescordbot.bot import NescordBot, main
 
 
 class TestNescordBot:

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.cogs.admin import AdminCog
+from nescordbot.cogs.admin import AdminCog
 
 
 class TestAdminFunctionality:

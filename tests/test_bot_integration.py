@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from src.bot import NescordBot
+from nescordbot.bot import NescordBot
 
 
 class TestBotDatabaseIntegration:
