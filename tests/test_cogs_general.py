@@ -379,13 +379,14 @@ class TestGeneralCog:
         bot = MagicMock()
         bot.add_cog = AsyncMock()
 
+        from nescordbot.cogs.general import General as GeneralImported
         from nescordbot.cogs.general import setup
 
         await setup(bot)
 
         bot.add_cog.assert_called_once()
         args = bot.add_cog.call_args[0]
-        assert isinstance(args[0], General)
+        assert isinstance(args[0], GeneralImported)
 
 
 class TestGeneralCogIntegration:
