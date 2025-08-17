@@ -27,11 +27,11 @@ class TestNescordBot:
         os.environ["OPENAI_API_KEY"] = "sk-abcdef1234567890abcdef1234567890abcdef1234567890ab"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -48,11 +48,11 @@ class TestNescordBot:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_bot_initialization(self):
         """Test NescordBot initialization."""
@@ -380,11 +380,11 @@ class TestMainFunction:
         os.environ["OPENAI_API_KEY"] = "sk-abcdef1234567890abcdef1234567890abcdef1234567890ab"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -401,11 +401,11 @@ class TestMainFunction:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     @pytest.mark.asyncio
     async def test_main_with_valid_config(self):
@@ -448,11 +448,11 @@ class TestBotIntegration:
         os.environ["LOG_LEVEL"] = "DEBUG"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -469,11 +469,11 @@ class TestBotIntegration:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_bot_integration_with_services(self):
         """Test bot integration with config and logger services."""

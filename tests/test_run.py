@@ -26,11 +26,11 @@ class TestBotRunner:
         os.environ["OPENAI_API_KEY"] = "sk-abcdef1234567890abcdef1234567890abcdef1234567890ab"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -47,11 +47,11 @@ class TestBotRunner:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_bot_runner_initialization(self):
         """Test BotRunner initialization."""
@@ -110,9 +110,9 @@ class TestBotRunner:
         runner.setup_logging()
 
         # Clear any existing global services first
-        import src.config
+        import nescordbot.config
 
-        src.config._config_manager = None
+        nescordbot.config._config_manager = None
 
         # Temporarily remove required environment variable
         original_token = os.environ.get("DISCORD_TOKEN")
@@ -266,11 +266,11 @@ class TestMainFunction:
         os.environ["OPENAI_API_KEY"] = "sk-abcdef1234567890abcdef1234567890abcdef1234567890ab"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -287,11 +287,11 @@ class TestMainFunction:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_main_success(self):
         """Test successful main function execution."""
@@ -321,11 +321,11 @@ class TestRunnerIntegration:
         os.environ["LOG_LEVEL"] = "DEBUG"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -342,11 +342,11 @@ class TestRunnerIntegration:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_runner_with_services_integration(self):
         """Test runner integration with config and logger services."""

@@ -101,7 +101,8 @@
       "Bash(gh label:*)",
       "Bash(gh api:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(grep:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",

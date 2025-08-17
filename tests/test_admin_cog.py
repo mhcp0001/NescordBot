@@ -110,14 +110,14 @@ class TestAdminCog:
         """Test database statistics when database is not initialized."""
         admin_cog.bot.database_service.is_initialized = False
 
-        await admin_cog.dbstats(mock_interaction)
+        await admin_cog.dbstats.callback(admin_cog, mock_interaction)
 
         # Verify error message
         mock_interaction.followup.send.assert_called_once_with("❌ データベースが初期化されていません。")
 
     async def test_config_command(self, admin_cog, mock_interaction):
         """Test configuration display command."""
-        await admin_cog.config(mock_interaction)
+        await admin_cog.config.callback(admin_cog, mock_interaction)
 
         # Verify interaction response
         mock_interaction.response.defer.assert_called_once()
@@ -141,7 +141,7 @@ class TestAdminCog:
         log_file.write_text(temp_log_file.read_text())
 
         try:
-            await admin_cog.logs(mock_interaction, level=None, lines=3)
+            await admin_cog.logs.callback(admin_cog, mock_interaction, level=None, lines=3)
 
             # Verify interaction response
             mock_interaction.response.defer.assert_called_once()
@@ -163,7 +163,7 @@ class TestAdminCog:
         # Ensure log file doesn't exist
         admin_cog.bot.data_dir = Path("/nonexistent")
 
-        await admin_cog.logs(mock_interaction)
+        await admin_cog.logs.callback(admin_cog, mock_interaction)
 
         # Verify error message
         mock_interaction.followup.send.assert_called_once_with("❌ ログファイルが見つかりません。")
@@ -180,7 +180,7 @@ class TestAdminCog:
         log_file.write_text(temp_log_file.read_text())
 
         try:
-            await admin_cog.logs(mock_interaction, level="ERROR", lines=10)
+            await admin_cog.logs.callback(admin_cog, mock_interaction, level="ERROR", lines=10)
 
             # Verify interaction response
             mock_interaction.response.defer.assert_called_once()
@@ -195,7 +195,9 @@ class TestAdminCog:
         """Test setconfig command without proper permissions."""
         # Mock permission check to return False
         with patch.object(admin_cog, "_check_admin_permissions", return_value=False):
-            await admin_cog.setconfig(mock_interaction, "test_key", "test_value")
+            await admin_cog.setconfig.callback(
+                admin_cog, mock_interaction, "test_key", "test_value"
+            )
 
         # Verify permission denied message
         mock_interaction.followup.send.assert_called_once_with(
@@ -206,7 +208,9 @@ class TestAdminCog:
         """Test setconfig command with proper permissions."""
         # Mock permission check to return True
         with patch.object(admin_cog, "_check_admin_permissions", return_value=True):
-            await admin_cog.setconfig(mock_interaction, "test_key", "test_value")
+            await admin_cog.setconfig.callback(
+                admin_cog, mock_interaction, "test_key", "test_value"
+            )
 
         # Verify database service was called
         admin_cog.bot.database_service.set.assert_called_once_with("config:test_key", "test_value")
@@ -221,7 +225,7 @@ class TestAdminCog:
     async def test_cleardb_command_unauthorized(self, admin_cog, mock_interaction):
         """Test cleardb command without proper permissions."""
         with patch.object(admin_cog, "_check_admin_permissions", return_value=False):
-            await admin_cog.cleardb(mock_interaction)
+            await admin_cog.cleardb.callback(admin_cog, mock_interaction)
 
         # Verify permission denied message
         mock_interaction.followup.send.assert_called_once_with(

@@ -35,9 +35,9 @@ class TestLoggerService:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
         # Clear global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def test_logger_service_initialization(self):
         """Test LoggerService initialization."""
@@ -174,9 +174,9 @@ class TestGlobalLoggerFunctions:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
         # Clear global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def test_get_logger_service_singleton(self):
         """Test that get_logger_service returns the same instance."""
@@ -252,9 +252,9 @@ class TestLoggerIntegration:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
         # Clear global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def test_logger_level_from_config(self):
         """Test logger level configuration from environment."""
