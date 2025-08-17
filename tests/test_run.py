@@ -75,9 +75,9 @@ class TestBotRunner:
         """Test logging setup failure."""
         runner = BotRunner()
 
-        with patch("run.get_logger", side_effect=Exception("Logging error")), pytest.raises(
-            SystemExit
-        ) as exc_info:
+        with patch(
+            "nescordbot.main.get_logger", side_effect=Exception("Logging error")
+        ), pytest.raises(SystemExit) as exc_info:
             runner.setup_logging()
 
         assert exc_info.value.code == 1
@@ -193,7 +193,7 @@ class TestBotRunner:
         runner = BotRunner()
         runner.setup_logging()
 
-        with patch("src.bot.main", new_callable=AsyncMock) as mock_bot_main:
+        with patch("nescordbot.bot.main", new_callable=AsyncMock) as mock_bot_main:
             # Make bot_main run indefinitely
             mock_bot_main.return_value = None
 
@@ -214,7 +214,7 @@ class TestBotRunner:
         runner = BotRunner()
         runner.setup_logging()
 
-        with patch("src.bot.main", new_callable=AsyncMock) as mock_bot_main:
+        with patch("nescordbot.bot.main", new_callable=AsyncMock) as mock_bot_main:
             mock_bot_main.side_effect = Exception("Bot error")
 
             result = await runner.run_bot()
@@ -366,7 +366,7 @@ class TestRunnerIntegration:
         runner = BotRunner()
 
         # Mock the bot main function to avoid actually starting Discord connection
-        with patch("src.bot.main", new_callable=AsyncMock) as mock_bot_main:
+        with patch("nescordbot.bot.main", new_callable=AsyncMock) as mock_bot_main:
             # Make the bot main return quickly
             mock_bot_main.return_value = None
 
