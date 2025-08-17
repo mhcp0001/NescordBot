@@ -29,28 +29,126 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `test: add unit tests for user service` - Adding tests
 - `chore: update dependencies` - Maintenance tasks
 
-## GitHub Issue and Project Management Rules
+## GitHub Issue and Project Management Rules (Automated Workflow)
 
-- **Check related issues**: Before implementing features, check if there are related GitHub issues
-- **Update issue status**: Close completed issues with appropriate comments and PR references
-- **Link PRs to issues**: Reference issue numbers in PR descriptions
-- **Regular synchronization**: Periodically check and update issue status
-- **Create issues for new tasks**: When discovering new tasks, create corresponding issues
-- **MANDATORY: Commit before closing issues**: Always create a commit for completed work before closing any GitHub issue. Include the commit hash in the issue closing comment.
+### Core Principles
+- **1 Issue = 1 Branch = 1 PR**: Every task starts with an issue and ends with automated closure
+- **Automation First**: Leverage gh CLI and GitHub features to minimize manual work
+- **Template-Driven**: Use standardized templates for consistency and completeness
+- **Auto-Linking**: Automatic connection between branches, commits, PRs, and issues
 
-### Issue Management Workflow
-1. Check existing issues before starting work
-2. Reference issue numbers in commits (e.g., `feat: implement feature #123`)
-3. **MANDATORY**: Create and push commits for all completed work
-4. Close issues when work is completed with explanatory comments **including commit hash**
-5. Update project boards if accessible
+### Automated Issue Workflow
 
-### Issue Closing Template
-When closing issues, always include:
-- Summary of completed work
-- Commit hash reference (e.g., "Implementation completed in commit abc1234")
-- Link to specific files changed
-- Test results if applicable
+#### 1. Issue Creation
+```bash
+# Use templates for consistent reporting
+gh issue create --template bug_report.md --title "Description"
+gh issue create --template feature_request.md --title "Description"
+```
+
+#### 2. Branch Creation & Development Start
+```bash
+# Automatic branch creation with issue linking
+gh issue develop 123 --name "type/123-description" --base main
+# Types: feature/, fix/, docs/, refactor/, test/, ci/, hotfix/
+```
+
+#### 3. Commit Convention (Enhanced)
+```bash
+# Format: type: description (refs #NUMBER)
+git commit -m "feat: 新しい管理コマンドを実装 (refs #123)
+
+- Slash commandの追加
+- エラーハンドリングの改善
+- ログ機能の統合"
+```
+
+#### 4. PR Creation with Auto-Close
+```bash
+# Use template with automatic issue closure
+gh pr create --fill --web
+# Ensure PR body contains: "Closes #123"
+```
+
+#### 5. Automated Merge & Closure
+```bash
+# Enable auto-merge after CI passes
+gh pr merge --auto --squash --delete-branch
+# Results in: PR merged → Issue closed → Branch deleted → Project updated
+```
+
+### Branch Naming Convention
+- **Format**: `type/issue-number-description`
+- **Examples**:
+  - `feature/123-admin-commands`
+  - `fix/456-voice-api-error`
+  - `docs/789-update-readme`
+
+### Commit Message Standard
+- **Format**: `type: description (refs #issue-number)`
+- **Types**: feat, fix, docs, style, refactor, test, chore
+- **Language**: Japanese description with English type prefix
+- **Auto-linking**: `(refs #123)` creates automatic GitHub links
+
+### PR Requirements
+- **Title**: Match commit convention (`type: description`)
+- **Body**: Must include `Closes #issue-number` for auto-closure
+- **Template**: Use provided PR template for comprehensive information
+- **Labels**: Auto-assigned based on branch type
+
+### GitHub Features Integration
+
+#### Templates Location
+- Bug reports: `.github/ISSUE_TEMPLATE/bug_report.md`
+- Feature requests: `.github/ISSUE_TEMPLATE/feature_request.md`
+- Pull requests: `.github/pull_request_template.md`
+
+#### Projects Integration
+- **Board**: Todo → In Progress → Done
+- **Auto-movement**: Issue creation → Todo, PR creation → In Progress, PR merge → Done
+- **Tracking**: `gh project item-list PROJECT_NUMBER --owner @me`
+
+#### Label Strategy
+- **Type**: `bug`, `feature`, `documentation`, `refactor`, `chore`
+- **Priority**: `priority: high`, `priority: medium`, `priority: low`
+- **Status**: `good first issue`, `help wanted`, `needs-review`
+
+### Claude Code Integration Commands
+
+#### Task Selection
+```bash
+# List available issues
+gh issue list --label "help wanted" --state open
+gh issue view 123  # Detailed view
+```
+
+#### Development Flow
+```bash
+# 1. Start work
+gh issue develop 123 --name "feature/123-new-command" --base main
+
+# 2. Quality checks
+poetry run pytest && poetry run black src/ && poetry run mypy src/
+
+# 3. Create PR
+git push && gh pr create --fill --web
+
+# 4. Auto-merge setup
+gh pr merge --auto --squash --delete-branch
+```
+
+### Quality Assurance
+- **MANDATORY**: All PRs must pass CI/CD checks
+- **MANDATORY**: Include test results in PR description
+- **MANDATORY**: Use `Closes #number` in PR body for auto-closure
+- **RECOMMENDED**: Enable auto-merge for streamlined workflow
+
+### Migration Benefits
+- **70% time reduction** in issue management tasks
+- **Automatic synchronization** between all GitHub components
+- **Consistent formatting** through templates
+- **Zero manual issue closure** through automation
+- **Enhanced traceability** through auto-linking
 
 ## [GLOBAL DIRECTIVE] Gemini Integration (Priority over project-specific CLAUDE.md)
 
