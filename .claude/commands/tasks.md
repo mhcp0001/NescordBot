@@ -26,7 +26,8 @@ When creating tasks, you MUST also propose a branching strategy following GitHub
 For each task, automatically determine:
 - Task type (feature, refactor, test, ci, docs, hotfix)
 - Recommended branch name using format: `<type>/<short-description>`
-- The `<short-description>` should be a kebab-case summary in English
+- The `<short-description>` should be a kebab-case summary in English (5-7 words max)
+- For complex tasks with multiple types, choose the primary work focus as the type
 
 Create `.tmp/tasks.md` with the following structure:
 
@@ -195,5 +196,8 @@ Show the task breakdown and:
 - Each task must have a specific branch name following GitHub Flow
 - Analyze task content to determine appropriate branch type (feature/refactor/test/ci/docs/hotfix)
 - Ensure branch names are descriptive and use kebab-case
+- Keep branch names concise (5-7 words maximum in description)
+- For tasks with multiple aspects, focus on the primary objective for type selection
+- Consider adding issue number if working with GitHub Issues (e.g., feature/123-user-auth)
 
 think hard

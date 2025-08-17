@@ -31,6 +31,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## GitHub Issue and Project Management Rules (Automated Workflow)
 
+### Prerequisites and Setup
+
+#### GitHub CLI Installation and Authentication
+Before using the automated workflow, ensure gh CLI is properly set up:
+
+1. **Install GitHub CLI**
+   ```bash
+   # Windows (with Scoop)
+   scoop install gh
+
+   # macOS
+   brew install gh
+
+   # Linux/WSL
+   curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+   sudo apt update && sudo apt install gh
+   ```
+
+2. **Authenticate with GitHub**
+   ```bash
+   gh auth login
+   # Select: GitHub.com
+   # Select: HTTPS
+   # Authenticate via: Browser (recommended)
+   # Ensure you have 'repo' and 'workflow' scopes
+   ```
+
+3. **Verify Authentication**
+   ```bash
+   gh auth status
+   # Should show: "Logged in to github.com as YOUR_USERNAME"
+   ```
+
+#### Repository Configuration Requirements
+- **Enable auto-merge**: Repository Settings → General → Pull Requests → Allow auto-merge
+- **Branch protection**: Settings → Branches → Add rule for `main`
+  - Require status checks: `test`, `security`, `integration-test`
+  - Require branches to be up to date before merging
+- **Required permissions**: Write access to repository for general development
+
 ### Core Principles
 - **1 Issue = 1 Branch = 1 PR**: Every task starts with an issue and ends with automated closure
 - **Automation First**: Leverage gh CLI and GitHub features to minimize manual work
@@ -56,11 +97,21 @@ gh issue develop 123 --name "type/123-description" --base main
 #### 3. Commit Convention (Enhanced)
 ```bash
 # Format: type: description (refs #NUMBER)
-git commit -m "feat: 新しい管理コマンドを実装 (refs #123)
+
+# Single line commit
+git commit -m "feat: 新しい管理コマンドを実装 (refs #123)"
+
+# Multi-line commit (using editor)
+git commit  # Opens default editor for detailed message
+
+# Multi-line commit (using heredoc)
+git commit -F- <<EOF
+feat: 新しい管理コマンドを実装 (refs #123)
 
 - Slash commandの追加
 - エラーハンドリングの改善
-- ログ機能の統合"
+- ログ機能の統合
+EOF
 ```
 
 #### 4. PR Creation with Auto-Close
@@ -135,6 +186,73 @@ git push && gh pr create --fill --web
 
 # 4. Auto-merge setup
 gh pr merge --auto --squash --delete-branch
+```
+
+### Error Handling and Troubleshooting
+
+#### Common Issues and Solutions
+
+1. **`gh issue develop` fails**
+   - **Error**: "Issue not found" → Check issue number: `gh issue list`
+   - **Error**: "Permission denied" → Re-authenticate: `gh auth refresh`
+   - **Error**: "Branch already exists" → Use different name or delete old branch
+
+2. **Quality checks fail locally**
+   ```bash
+   # Fix formatting issues
+   poetry run black src/ --diff  # See what will change
+   poetry run black src/         # Apply changes
+
+   # Fix type issues
+   poetry run mypy src/ --show-error-codes
+
+   # Fix import sorting
+   poetry run isort src/ --diff
+   poetry run isort src/
+   ```
+
+3. **CI/GitHub Actions failures**
+   - Check PR "Checks" tab for detailed logs
+   - Common fixes:
+     ```bash
+     # Update dependencies
+     poetry update
+
+     # Regenerate lock file
+     poetry lock --no-update
+
+     # Clear cache and reinstall
+     poetry cache clear pypi --all
+     poetry install
+     ```
+
+4. **Merge conflicts**
+   ```bash
+   # Update your branch with latest main
+   git fetch origin main
+   git rebase origin/main  # Preferred method
+   # OR
+   git merge origin/main   # Alternative method
+
+   # Resolve conflicts, then
+   git add .
+   git rebase --continue  # If rebasing
+   git commit            # If merging
+   git push --force-with-lease  # If rebased
+   ```
+
+5. **Auto-merge not working**
+   - Ensure all required status checks pass
+   - Check for merge conflicts: `gh pr status`
+   - Verify branch protection settings
+   - Manual fallback: `gh pr merge --squash --delete-branch`
+
+#### Project Number Discovery
+```bash
+# Find project number for automation
+gh project list --owner @me
+# OR for organization
+gh project list --owner ORG_NAME
 ```
 
 ### Quality Assurance
