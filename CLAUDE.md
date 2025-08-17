@@ -406,14 +406,15 @@ NescordBot is a Discord bot built with Python that provides voice transcription 
 
 ### Running the Bot
 ```bash
-# Using Poetry (preferred)
-poetry run python src/bot.py
-# Or from run.py
-poetry run python run.py
+# Using Poetry (preferred) - New module-based approach
+poetry run python -m nescordbot
+
+# Alternative module execution
+poetry run python src/nescordbot/__main__.py
 
 # Alternative if Poetry shell is activated
 poetry shell
-python src/bot.py
+python -m nescordbot
 ```
 
 ### Development Commands
@@ -433,9 +434,10 @@ poetry run mypy src/
 # Import sorting
 poetry run isort src/
 
-# Run tests
-poetry run pytest tests/
-poetry run pytest --cov=src tests/  # With coverage
+# Run tests (with parallel execution)
+poetry run pytest tests/ -n auto
+poetry run pytest tests/ --cov=src --cov-report=html -n auto  # With coverage
+poetry run pytest tests/ -m "not slow and not network" -n auto  # CI-style
 ```
 
 ### Dependency Management
@@ -456,18 +458,28 @@ poetry export -f requirements.txt --output requirements.txt --without-hashes
 ## Architecture
 
 ### Core Structure
-- **src/bot.py**: Main bot entry point with NescordBot class that extends commands.Bot
-  - Handles bot initialization, event listeners, and voice message detection
-  - Manages cog loading and slash command synchronization
+- **src/nescordbot/**: Main package directory
+  - **bot.py**: NescordBot class that extends commands.Bot
+  - **main.py**: BotRunner and service management
+  - **__main__.py**: Module entry point
+  - **config.py**: Configuration management with Pydantic
+  - **logger.py**: Logging service setup
+
+- **Services Layer**: Data persistence and external integrations
+  - **services/database.py**: DatabaseService with aiosqlite
+  - **services/__init__.py**: Service container and dependency injection
 
 - **Cogs System**: Modular command groups loaded dynamically
-  - **src/cogs/general.py**: General commands (/help, /status, /ping)
-  - **src/cogs/voice.py**: Voice processing with OpenAI Whisper transcription and GPT processing
+  - **cogs/general.py**: General commands (/help, /status, /ping)
+  - **cogs/admin.py**: Administrative commands (/logs, /config, /dbstats)
+  - **cogs/voice.py**: Voice processing with OpenAI Whisper transcription and GPT processing
 
 ### Key Technologies
 - **discord.py 2.3+**: Discord API wrapper
 - **OpenAI API**: Whisper for transcription, GPT-3.5/GPT-4 for text processing
-- **Poetry**: Dependency management
+- **aiosqlite**: Async SQLite database operations
+- **Poetry**: Dependency management and virtual environment
+- **pytest + pytest-xdist**: Parallel testing framework
 - **asyncio**: Asynchronous operations throughout
 
 ### Event Flow for Voice Messages
@@ -485,8 +497,11 @@ poetry export -f requirements.txt --output requirements.txt --without-hashes
 
 ## Testing Approach
 - Uses pytest with pytest-asyncio for async testing
+- **pytest-xdist**: Parallel test execution with `-n auto`
 - Mock-based testing for Discord interactions
-- Test files in tests/ directory mirror src/ structure
+- Test files in tests/ directory mirror src/nescordbot/ structure
+- **Coverage target**: 60%+ (currently 78%)
+- **CI/CD**: GitHub Actions with Python 3.11/3.12 matrix
 
 ## Important Notes
 - Bot requires FFmpeg installed for audio processing
