@@ -12,7 +12,7 @@ from typing import Any, Dict
 
 import pytest
 
-from src.services.database import DatabaseService, IDataStore
+from nescordbot.services.database import DatabaseService, IDataStore
 
 
 class TestDatabaseService:
@@ -108,7 +108,8 @@ class TestDatabaseService:
             await temp_db.set(key, value)
 
         async def read_data(key: str) -> str:
-            return await temp_db.get(key)
+            result = await temp_db.get(key)
+            return str(result) if result is not None else ""
 
         # Concurrent writes
         tasks = [write_data(f"key_{i}", f"value_{i}") for i in range(10)]

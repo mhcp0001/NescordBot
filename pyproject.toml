@@ -4,7 +4,10 @@ version = "1.0.0"
 description = "Discord Bot with voice transcription and AI-powered features"
 authors = ["Your Name <your.email@example.com>"]
 readme = "README.md"
-packages = [{include = "src"}]
+packages = [{include = "nescordbot", from = "src"}]
+
+[tool.poetry.scripts]
+nescordbot = "nescordbot.main:main"
 
 [tool.poetry.dependencies]
 python = "^3.11"

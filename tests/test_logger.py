@@ -3,13 +3,14 @@ Tests for logging service.
 """
 
 import logging
+import logging.handlers
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from src.logger import LoggerService, get_logger, get_logger_service
+from nescordbot.logger import LoggerService, get_logger, get_logger_service
 
 
 class TestLoggerService:
@@ -22,9 +23,9 @@ class TestLoggerService:
         self.logs_dir = Path(self.temp_dir) / "logs"
 
         # Clear any existing global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -161,9 +162,9 @@ class TestGlobalLoggerFunctions:
         self.temp_dir = tempfile.mkdtemp()
 
         # Clear any existing global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -240,9 +241,9 @@ class TestLoggerIntegration:
         self.temp_dir = tempfile.mkdtemp()
 
         # Clear any existing global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""

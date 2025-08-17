@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-NescordBot startup script.
+NescordBot main entry point.
 
-This script serves as the main entry point for the NescordBot application.
+This module serves as the main entry point for the NescordBot application.
 It handles initialization, configuration validation, signal handling,
 and graceful shutdown.
 """
@@ -12,30 +12,10 @@ import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Optional
 
-# Add src directory to Python path for imports
-# Handle both local development and container deployment
-current_dir = Path(__file__).parent
-src_path = current_dir / "src"
-
-# Add both current directory and src to path for container compatibility
-sys.path.insert(0, str(current_dir))
-sys.path.insert(0, str(src_path))
-
-try:
-    from src.config import get_config_manager
-    from src.logger import get_logger
-except ImportError:
-    # Fallback for container environment where src might be at root level
-    import config as src_config
-    import logger as src_logger
-
-    def get_logger(name: Optional[str] = None):
-        return src_logger.get_logger(name)
-
-    def get_config_manager():
-        return src_config.get_config_manager()
+from .bot import main as bot_main
+from .config import get_config_manager
+from .logger import get_logger
 
 
 class BotRunner:
@@ -47,8 +27,8 @@ class BotRunner:
 
     def __init__(self):
         """Initialize the bot runner."""
-        self.bot: Optional[object] = None
-        self.logger: Optional[logging.Logger] = None
+        self.bot = None
+        self.logger: logging.Logger  # Will be initialized in setup_logging
         self.shutdown_event = asyncio.Event()
 
     def setup_logging(self) -> None:
@@ -68,8 +48,7 @@ class BotRunner:
             bool: True if environment is valid, False otherwise
         """
         try:
-            if self.logger:
-                self.logger.info("Validating environment configuration...")
+            self.logger.info("Validating environment configuration...")
 
             # Check if .env file exists (optional but recommended)
             env_file = Path(".env")
@@ -92,10 +71,7 @@ class BotRunner:
             return True
 
         except Exception as e:
-            if self.logger:
-                self.logger.critical(f"Environment validation failed: {e}")
-            else:
-                print(f"❌ Environment validation failed: {e}")
+            self.logger.critical(f"Environment validation failed: {e}")
 
             self._print_setup_help()
             return False
@@ -118,7 +94,7 @@ class BotRunner:
         print("   - Go to https://platform.openai.com/api-keys")
         print("   - Create a new API key")
         print("\n5. Run the bot:")
-        print("   poetry run python run.py")
+        print("   poetry run nescordbot")
         print("\n" + "=" * 60)
 
     def setup_signal_handlers(self) -> None:
@@ -127,10 +103,7 @@ class BotRunner:
         def signal_handler(signum: int, frame) -> None:
             """Handle shutdown signals."""
             signal_name = signal.Signals(signum).name
-            if self.logger:
-                self.logger.info(f"Received {signal_name} signal, initiating graceful shutdown...")
-            else:
-                print(f"\n🛑 Received {signal_name} signal, shutting down...")
+            self.logger.info(f"Received {signal_name} signal, initiating graceful shutdown...")
 
             # Set the shutdown event
             if asyncio.get_event_loop().is_running():
@@ -150,8 +123,7 @@ class BotRunner:
             if hasattr(signal, "SIGBREAK"):
                 signal.signal(signal.SIGBREAK, signal_handler)
 
-        if self.logger:
-            self.logger.info("Signal handlers configured")
+        self.logger.info("Signal handlers configured")
 
     async def _shutdown(self) -> None:
         """Initiate shutdown sequence."""
@@ -166,15 +138,6 @@ class BotRunner:
         """
         try:
             self.logger.info("Starting NescordBot...")
-
-            # Import bot here to avoid import issues during early validation
-            try:
-                from src.bot import main as bot_main
-            except ImportError:
-                # Fallback for container environment
-                import bot as src_bot
-
-                bot_main = src_bot.main
 
             # Create task for bot and shutdown monitoring
             bot_task = asyncio.create_task(bot_main())
@@ -247,10 +210,7 @@ class BotRunner:
             return await self.run_bot()
 
         except Exception as e:
-            if self.logger:
-                self.logger.critical(f"Fatal error in bot runner: {e}")
-            else:
-                print(f"❌ Fatal error: {e}")
+            self.logger.critical(f"Fatal error in bot runner: {e}")
             return 1
 
 

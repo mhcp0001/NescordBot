@@ -207,7 +207,7 @@ class DatabaseService(IDataStore):
 
     async def get(self, key: str) -> Optional[str]:
         """Retrieve a value by key."""
-        if not self.is_initialized:
+        if not self.is_initialized or self.connection is None:
             raise RuntimeError("Database not initialized")
 
         async with self._lock:
@@ -226,7 +226,7 @@ class DatabaseService(IDataStore):
 
     async def set(self, key: str, value: str) -> None:
         """Store a key-value pair."""
-        if not self.is_initialized:
+        if not self.is_initialized or self.connection is None:
             raise RuntimeError("Database not initialized")
 
         async with self._lock:
@@ -248,7 +248,7 @@ class DatabaseService(IDataStore):
 
     async def delete(self, key: str) -> None:
         """Delete a key-value pair."""
-        if not self.is_initialized:
+        if not self.is_initialized or self.connection is None:
             raise RuntimeError("Database not initialized")
 
         async with self._lock:
@@ -274,7 +274,8 @@ class DatabaseService(IDataStore):
             return None
 
         try:
-            return json.loads(value)
+            result = json.loads(value)
+            return result if isinstance(result, dict) else None
         except (json.JSONDecodeError, TypeError) as e:
             logger.warning(f"Failed to parse JSON for key '{key}': {e}")
             return None
@@ -291,7 +292,7 @@ class DatabaseService(IDataStore):
 
     async def exists(self, key: str) -> bool:
         """Check if a key exists."""
-        if not self.is_initialized:
+        if not self.is_initialized or self.connection is None:
             raise RuntimeError("Database not initialized")
 
         async with self._lock:
@@ -310,7 +311,7 @@ class DatabaseService(IDataStore):
 
     async def keys(self, pattern: str = "*") -> List[str]:
         """List keys matching a pattern."""
-        if not self.is_initialized:
+        if not self.is_initialized or self.connection is None:
             raise RuntimeError("Database not initialized")
 
         async with self._lock:
@@ -332,7 +333,7 @@ class DatabaseService(IDataStore):
 
     async def clear(self) -> None:
         """Clear all data from the store. Use with caution!"""
-        if not self.is_initialized:
+        if not self.is_initialized or self.connection is None:
             raise RuntimeError("Database not initialized")
 
         async with self._lock:
@@ -347,7 +348,7 @@ class DatabaseService(IDataStore):
 
     async def get_stats(self) -> Dict[str, Any]:
         """Get database statistics."""
-        if not self.is_initialized:
+        if not self.is_initialized or self.connection is None:
             raise RuntimeError("Database not initialized")
 
         async with self._lock:
