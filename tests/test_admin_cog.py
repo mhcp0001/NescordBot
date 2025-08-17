@@ -307,13 +307,15 @@ class TestAdminCog:
 class TestConfirmationView:
     """Test cases for ConfirmationView."""
 
-    def test_confirmation_view_initialization(self):
+    @pytest.mark.asyncio
+    async def test_confirmation_view_initialization(self):
         """Test ConfirmationView initialization."""
         view = ConfirmationView()
         assert view.confirmed is False
         assert view.timeout == 30.0
         assert len(view.children) == 2  # Confirm and Cancel buttons
 
+    @pytest.mark.asyncio
     async def test_confirm_button(self):
         """Test confirm button functionality."""
         view = ConfirmationView()
@@ -321,23 +323,31 @@ class TestConfirmationView:
         # Mock interaction
         interaction = AsyncMock()
 
-        # Mock button
-        button = MagicMock()
-        button.disabled = False
-        view.cancel_button = MagicMock()
-        view.cancel_button.disabled = False
+        # Get the actual buttons from the view
+        confirm_button = None
+        cancel_button = None
+        for child in view.children:
+            if hasattr(child, "label"):
+                if child.label == "確認":
+                    confirm_button = child
+                elif child.label == "キャンセル":
+                    cancel_button = child
+
+        assert confirm_button is not None
+        assert cancel_button is not None
 
         # Call confirm method
-        await view.confirm(interaction, button)
+        await view.confirm.callback(interaction)
 
         # Verify state
         assert view.confirmed is True
-        assert button.disabled is True
-        assert view.cancel_button.disabled is True
+        assert confirm_button.disabled is True
+        assert cancel_button.disabled is True
 
         # Verify interaction response
         interaction.response.edit_message.assert_called_once_with(view=view)
 
+    @pytest.mark.asyncio
     async def test_cancel_button(self):
         """Test cancel button functionality."""
         view = ConfirmationView()
@@ -345,38 +355,56 @@ class TestConfirmationView:
         # Mock interaction
         interaction = AsyncMock()
 
-        # Mock buttons
-        button = MagicMock()
-        button.disabled = False
-        view.confirm = MagicMock()
-        view.confirm.disabled = False
+        # Get the actual buttons from the view
+        confirm_button = None
+        cancel_button = None
+        for child in view.children:
+            if hasattr(child, "label"):
+                if child.label == "確認":
+                    confirm_button = child
+                elif child.label == "キャンセル":
+                    cancel_button = child
+
+        assert confirm_button is not None
+        assert cancel_button is not None
 
         # Call cancel method
-        await view.cancel_button(interaction, button)
+        await view.cancel_button.callback(interaction)
 
         # Verify state
         assert view.confirmed is False
-        assert button.disabled is True
-        assert view.confirm.disabled is True
+        assert cancel_button.disabled is True
+        assert confirm_button.disabled is True
 
         # Verify interaction response
         interaction.response.edit_message.assert_called_once_with(view=view)
 
+    @pytest.mark.asyncio
     async def test_timeout_handling(self):
         """Test timeout handling."""
         view = ConfirmationView()
 
-        # Mock children
-        child1 = MagicMock()
-        child1.disabled = False
-        child2 = MagicMock()
-        child2.disabled = False
-        view.children = [child1, child2]
+        # Get the actual buttons from the view
+        confirm_button = None
+        cancel_button = None
+        for child in view.children:
+            if hasattr(child, "label"):
+                if child.label == "確認":
+                    confirm_button = child
+                elif child.label == "キャンセル":
+                    cancel_button = child
+
+        assert confirm_button is not None
+        assert cancel_button is not None
+
+        # Ensure buttons are initially enabled
+        confirm_button.disabled = False
+        cancel_button.disabled = False
 
         # Call timeout
         await view.on_timeout()
 
         # Verify state
         assert view.confirmed is False
-        assert child1.disabled is True
-        assert child2.disabled is True
+        assert confirm_button.disabled is True
+        assert cancel_button.disabled is True

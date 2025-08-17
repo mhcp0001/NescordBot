@@ -411,7 +411,7 @@ class TestMainFunction:
     async def test_main_with_valid_config(self):
         """Test main function with valid configuration."""
         # Mock NescordBot and its start method
-        with patch("src.bot.NescordBot") as mock_bot_class:
+        with patch("nescordbot.bot.NescordBot") as mock_bot_class:
             mock_bot = AsyncMock()
             mock_bot_class.return_value = mock_bot
             mock_bot.start = AsyncMock()

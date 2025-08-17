@@ -35,7 +35,7 @@ class TestBotDatabaseIntegration:
             return MockConfigManager()
 
         # Mock the configuration manager
-        monkeypatch.setattr("src.bot.get_config_manager", mock_get_config_manager)
+        monkeypatch.setattr("nescordbot.bot.get_config_manager", mock_get_config_manager)
 
         return MockConfig()
 
@@ -59,7 +59,7 @@ class TestBotDatabaseIntegration:
         def mock_get_logger(name):
             return MockLogger()
 
-        monkeypatch.setattr("src.bot.get_logger", mock_get_logger)
+        monkeypatch.setattr("nescordbot.bot.get_logger", mock_get_logger)
 
     async def test_bot_initialization_with_database(self, mock_config, mock_logger):
         """Test that bot initializes with database service."""
@@ -183,7 +183,7 @@ class TestBotDatabaseRealFile:
         def mock_get_config_manager():
             return MockConfigManager()
 
-        monkeypatch.setattr("src.bot.get_config_manager", mock_get_config_manager)
+        monkeypatch.setattr("nescordbot.bot.get_config_manager", mock_get_config_manager)
 
         yield MockConfig()
 
@@ -210,7 +210,7 @@ class TestBotDatabaseRealFile:
         def mock_get_logger(name):
             return MockLogger()
 
-        monkeypatch.setattr("src.bot.get_logger", mock_get_logger)
+        monkeypatch.setattr("nescordbot.bot.get_logger", mock_get_logger)
 
     async def test_database_file_persistence(self, temp_db_config, mock_logger):
         """Test that data persists to actual database file."""

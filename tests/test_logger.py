@@ -201,7 +201,7 @@ class TestGlobalLoggerFunctions:
 
         try:
             # Import and test convenience functions
-            from src.logger import critical, debug, error, exception, info, warning
+            from nescordbot.logger import critical, debug, error, exception, info, warning
 
             debug("Debug message")
             info("Info message")
@@ -263,7 +263,7 @@ class TestLoggerIntegration:
 
         try:
             # Create a new logger service directly instead of using global
-            from src.logger import LoggerService
+            from nescordbot.logger import LoggerService
 
             logger_service = LoggerService("test_config", str(self.temp_dir))
             logger_service.setup()

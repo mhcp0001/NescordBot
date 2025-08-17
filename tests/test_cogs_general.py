@@ -379,7 +379,7 @@ class TestGeneralCog:
         bot = MagicMock()
         bot.add_cog = AsyncMock()
 
-        from src.cogs.general import setup
+        from nescordbot.cogs.general import setup
 
         await setup(bot)
 
