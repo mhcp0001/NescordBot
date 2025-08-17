@@ -36,6 +36,8 @@ build/
 # テストカバレッジ
 coverage/
 .nyc_output/
+.coverage
+htmlcov/
 
 # その他
 .cache/
