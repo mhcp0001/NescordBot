@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, phase2-development ]
   pull_request:
     branches: [ main ]
 
@@ -78,7 +78,8 @@ jobs:
           --cov-report=html \
           --cov-report=term-missing \
           --junit-xml=test-results.xml \
-          -m "not slow and not network"
+          -m "not slow and not network" \
+          -n auto
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -143,7 +144,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -183,7 +184,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'pull_request'
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -207,7 +208,8 @@ jobs:
         poetry run pytest tests/ \
           --verbose \
           -m "integration" \
-          --maxfail=1
+          --maxfail=1 \
+          -n auto
 
     - name: Test startup script
       env:
@@ -216,9 +218,7 @@ jobs:
       run: |
         # Test that the bot can be imported and basic validation works
         poetry run python -c "
-        import sys
-        sys.path.insert(0, 'src')
-        from run import BotRunner
+        from nescordbot.main import BotRunner
         runner = BotRunner()
         runner.setup_logging()
         print('✅ Bot runner can be initialized')

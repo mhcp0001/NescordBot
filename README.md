@@ -25,6 +25,7 @@ Discord Bot with voice transcription and AI-powered features.
 - Python 3.11 以上
 - Poetry（依存関係管理）
 - FFmpeg（音声処理用）
+- GitHub CLI（開発用）
 - Discord Bot Token
 - OpenAI API Key
 
@@ -78,7 +79,25 @@ cp .env.example .env
 # .envファイルを編集して、必要なトークンとAPIキーを設定
 ```
 
-6. Botを起動
+6. GitHub CLI をセットアップ（開発用）
+```bash
+# インストール（未インストールの場合）
+# Windows (Scoop)
+scoop install gh
+
+# macOS
+brew install gh
+
+# Linux/WSL
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+sudo apt update && sudo apt install gh
+
+# 認証
+gh auth login
+```
+
+7. Botを起動
 ```bash
 # Poetry環境内で実行
 poetry run python src/bot.py
@@ -169,6 +188,27 @@ CMD ["python", "src/bot.py"]
 4. ボタンでObsidian保存やX投稿が可能
 
 ## 開発
+
+### 開発ワークフロー
+
+```bash
+# 1. 利用可能なIssueを確認
+gh issue list --label "help wanted" --state open
+
+# 2. Issueから開発ブランチを作成
+gh issue develop 123 --name "feature/123-new-feature" --base main
+
+# 3. 開発・コミット
+git add .
+git commit -m "feat: 新機能を実装 (refs #123)"
+
+# 4. PRを作成（自動でIssueとリンク）
+git push
+gh pr create --fill --web  # 本文に "Closes #123" を含める
+
+# 5. 自動マージ設定（CI通過後）
+gh pr merge --auto --squash --delete-branch
+```
 
 ### コードスタイル
 

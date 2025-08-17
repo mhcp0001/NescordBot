@@ -6,7 +6,7 @@
   },
   {
     "key": "ctrl+shift+f",
-    "command": "workbench.action.tasks.runTask", 
+    "command": "workbench.action.tasks.runTask",
     "args": "🔧 Auto Fix (Format + Lint)"
   },
   {

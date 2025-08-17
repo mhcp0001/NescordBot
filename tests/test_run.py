@@ -11,10 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from run import BotRunner, main  # noqa: E402
+from nescordbot.main import BotRunner, main
 
 
 class TestBotRunner:
@@ -29,11 +26,11 @@ class TestBotRunner:
         os.environ["OPENAI_API_KEY"] = "sk-abcdef1234567890abcdef1234567890abcdef1234567890ab"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -50,11 +47,11 @@ class TestBotRunner:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_bot_runner_initialization(self):
         """Test BotRunner initialization."""
@@ -78,9 +75,9 @@ class TestBotRunner:
         """Test logging setup failure."""
         runner = BotRunner()
 
-        with patch("run.get_logger", side_effect=Exception("Logging error")), pytest.raises(
-            SystemExit
-        ) as exc_info:
+        with patch(
+            "nescordbot.main.get_logger", side_effect=Exception("Logging error")
+        ), pytest.raises(SystemExit) as exc_info:
             runner.setup_logging()
 
         assert exc_info.value.code == 1
@@ -113,9 +110,9 @@ class TestBotRunner:
         runner.setup_logging()
 
         # Clear any existing global services first
-        import src.config
+        import nescordbot.config
 
-        src.config._config_manager = None
+        nescordbot.config._config_manager = None
 
         # Temporarily remove required environment variable
         original_token = os.environ.get("DISCORD_TOKEN")
@@ -196,7 +193,7 @@ class TestBotRunner:
         runner = BotRunner()
         runner.setup_logging()
 
-        with patch("src.bot.main", new_callable=AsyncMock) as mock_bot_main:
+        with patch("nescordbot.bot.main", new_callable=AsyncMock) as mock_bot_main:
             # Make bot_main run indefinitely
             mock_bot_main.return_value = None
 
@@ -217,7 +214,7 @@ class TestBotRunner:
         runner = BotRunner()
         runner.setup_logging()
 
-        with patch("src.bot.main", new_callable=AsyncMock) as mock_bot_main:
+        with patch("nescordbot.bot.main", new_callable=AsyncMock) as mock_bot_main:
             mock_bot_main.side_effect = Exception("Bot error")
 
             result = await runner.run_bot()
@@ -269,11 +266,11 @@ class TestMainFunction:
         os.environ["OPENAI_API_KEY"] = "sk-abcdef1234567890abcdef1234567890abcdef1234567890ab"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -290,11 +287,11 @@ class TestMainFunction:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_main_success(self):
         """Test successful main function execution."""
@@ -324,11 +321,11 @@ class TestRunnerIntegration:
         os.environ["LOG_LEVEL"] = "DEBUG"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -345,11 +342,11 @@ class TestRunnerIntegration:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_runner_with_services_integration(self):
         """Test runner integration with config and logger services."""
@@ -369,21 +366,22 @@ class TestRunnerIntegration:
         runner = BotRunner()
 
         # Mock the bot main function to avoid actually starting Discord connection
-        with patch("src.bot.main", new_callable=AsyncMock) as mock_bot_main:
+        with patch("nescordbot.bot.main", new_callable=AsyncMock) as mock_bot_main:
             # Make the bot main return quickly
             mock_bot_main.return_value = None
 
-            # Start the runner but trigger shutdown immediately
-            start_task = asyncio.create_task(runner.start())
+            async def shutdown_after_delay():
+                """Trigger shutdown after initialization."""
+                await asyncio.sleep(0.1)
+                await runner._shutdown()
 
-            # Give it a moment to initialize
-            await asyncio.sleep(0.1)
+            # Use gather to manage both tasks under pytest-asyncio control
+            results = await asyncio.gather(
+                runner.start(), shutdown_after_delay(), return_exceptions=True
+            )
 
-            # Trigger shutdown
-            await runner._shutdown()
-
-            # Wait for completion
-            result = await start_task
+            # Extract the result from start() - should be first result if no exception
+            result = results[0] if not isinstance(results[0], Exception) else 1
 
             assert result == 0
 

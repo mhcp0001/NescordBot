@@ -13,7 +13,7 @@ from typing import Optional
 
 import colorlog
 
-from src.config import get_config_manager
+from .config import get_config_manager
 
 
 class LoggerService:
@@ -62,7 +62,8 @@ class LoggerService:
         self.logger.handlers.clear()
 
         # Set logger level
-        numeric_level = getattr(logging, log_level.upper(), logging.INFO)
+        level_str = log_level.upper() if log_level else "INFO"
+        numeric_level = getattr(logging, level_str, logging.INFO)
         self.logger.setLevel(numeric_level)
 
         # Setup console handler with colors

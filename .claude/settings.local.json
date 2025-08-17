@@ -96,7 +96,13 @@
       "Bash(poetry run black:*)",
       "Bash(poetry run flake8:*)",
       "Bash(poetry run mypy:*)",
-      "Bash(poetry run pytest:*)"
+      "Bash(poetry run pytest:*)",
+      "Bash(git fetch:*)",
+      "Bash(gh label:*)",
+      "Bash(gh api:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(grep:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",

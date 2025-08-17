@@ -46,7 +46,7 @@ test-quick:  ## 高速テスト (slow除外)
 ci:  ## CI環境での全チェック
 	@echo "🚀 Running CI checks..."
 	poetry run black --check src/ tests/
-	poetry run isort --check-only src/ tests/ 
+	poetry run isort --check-only src/ tests/
 	poetry run ruff check src/ tests/
 	poetry run mypy src/ --ignore-missing-imports
 	poetry run pytest tests/ -v --cov=src -m "not slow and not network"

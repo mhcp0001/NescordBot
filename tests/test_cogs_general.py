@@ -11,7 +11,7 @@ import pytest
 from discord import app_commands
 from discord.ext import commands
 
-from src.cogs.general import General
+from nescordbot.cogs.general import General
 
 
 class TestGeneralCog:
@@ -26,11 +26,11 @@ class TestGeneralCog:
         os.environ["OPENAI_API_KEY"] = "sk-abcdef1234567890abcdef1234567890abcdef1234567890ab"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -47,11 +47,11 @@ class TestGeneralCog:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_cog_initialization(self):
         """Test General cog initialization."""
@@ -379,13 +379,14 @@ class TestGeneralCog:
         bot = MagicMock()
         bot.add_cog = AsyncMock()
 
-        from src.cogs.general import setup
+        from nescordbot.cogs.general import General as GeneralImported
+        from nescordbot.cogs.general import setup
 
         await setup(bot)
 
         bot.add_cog.assert_called_once()
         args = bot.add_cog.call_args[0]
-        assert isinstance(args[0], General)
+        assert isinstance(args[0], GeneralImported)
 
 
 class TestGeneralCogIntegration:
@@ -401,11 +402,11 @@ class TestGeneralCogIntegration:
         os.environ["LOG_LEVEL"] = "DEBUG"
 
         # Clear any existing global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -422,11 +423,11 @@ class TestGeneralCogIntegration:
                 del os.environ[var]
 
         # Clear global services
-        import src.config
-        import src.logger
+        import nescordbot.config
+        import nescordbot.logger
 
-        src.config._config_manager = None
-        src.logger._logger_service = None
+        nescordbot.config._config_manager = None
+        nescordbot.logger._logger_service = None
 
     def test_cog_with_logger_integration(self):
         """Test General cog integration with logger service."""

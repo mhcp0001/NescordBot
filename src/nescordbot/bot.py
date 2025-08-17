@@ -12,25 +12,9 @@ from pathlib import Path
 import discord
 from discord.ext import commands
 
-try:
-    from src.config import get_config_manager
-    from src.logger import get_logger
-except ImportError:
-    # Fallback for Railway deployment
-    import sys
-
-    # Add parent directory to path
-    parent_path = str(Path(__file__).parent.parent)
-    if parent_path not in sys.path:
-        sys.path.insert(0, parent_path)
-
-    try:
-        from src.config import get_config_manager
-        from src.logger import get_logger
-    except ImportError:
-        # Direct import as last resort
-        from config import get_config_manager  # type: ignore
-        from logger import get_logger  # type: ignore
+from .config import get_config_manager
+from .logger import get_logger
+from .services import DatabaseService
 
 
 class NescordBot(commands.Bot):
@@ -67,6 +51,10 @@ class NescordBot(commands.Bot):
         self.data_dir = Path("data")
         self.data_dir.mkdir(exist_ok=True)
 
+        # Initialize database service
+        db_path = self.config.database_url if hasattr(self.config, "database_url") else "nescord.db"
+        self.database_service = DatabaseService(db_path)
+
         self.logger.info("NescordBot instance created")
 
     async def setup_hook(self) -> None:
@@ -79,6 +67,10 @@ class NescordBot(commands.Bot):
         self.logger.info("Starting bot setup...")
 
         try:
+            # Initialize database service
+            await self.database_service.initialize()
+            self.logger.info("Database service initialized")
+
             # Load cogs
             await self._load_cogs()
 
@@ -94,7 +86,7 @@ class NescordBot(commands.Bot):
 
     async def _load_cogs(self) -> None:
         """Load all cogs from the cogs directory."""
-        cogs_dir = Path("src/cogs")
+        cogs_dir = Path(__file__).parent / "cogs"
         cogs_loaded = 0
 
         if not cogs_dir.exists():
@@ -106,7 +98,7 @@ class NescordBot(commands.Bot):
             if cog_file.name.startswith("__"):
                 continue
 
-            cog_name = f"src.cogs.{cog_file.stem}"
+            cog_name = f"nescordbot.cogs.{cog_file.stem}"
 
             try:
                 await self.load_extension(cog_name)
@@ -273,6 +265,12 @@ class NescordBot(commands.Bot):
     async def close(self) -> None:
         """Clean up resources when bot is shutting down."""
         self.logger.info("Bot is shutting down...")
+
+        # Close database service
+        if hasattr(self, "database_service") and self.database_service.is_initialized:
+            await self.database_service.close()
+            self.logger.info("Database service closed")
+
         await super().close()
         self.logger.info("Bot shutdown complete")
 

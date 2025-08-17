@@ -16,16 +16,8 @@ import discord
 import pytest
 from discord.ext import commands
 
-# Add project root to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+# Add src directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 @pytest.fixture(autouse=True)
@@ -62,20 +54,20 @@ def setup_test_environment():
 def reset_singletons():
     """Reset singleton instances before each test."""
     # Reset ConfigManager singleton
-    import src.config
+    import nescordbot.config
 
-    src.config._config_manager = None
+    nescordbot.config._config_manager = None
 
     # Reset LoggerService singleton
-    import src.logger
+    import nescordbot.logger
 
-    src.logger._logger_service = None
+    nescordbot.logger._logger_service = None
 
     yield
 
     # Clean up after test
-    src.config._config_manager = None
-    src.logger._logger_service = None
+    nescordbot.config._config_manager = None
+    nescordbot.logger._logger_service = None
 
 
 @pytest.fixture
@@ -195,7 +187,7 @@ def mock_bot():
 @pytest.fixture
 async def config_manager():
     """Get a configured ConfigManager instance."""
-    from src.config import get_config_manager
+    from nescordbot.config import get_config_manager
 
     return get_config_manager()
 
@@ -203,7 +195,7 @@ async def config_manager():
 @pytest.fixture
 async def logger_service():
     """Get a configured LoggerService instance."""
-    from src.logger import get_logger
+    from nescordbot.logger import get_logger
 
     return get_logger("test")
 

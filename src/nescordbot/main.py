@@ -1,56 +1,37 @@
 #!/usr/bin/env python3
 """
-NescordBot startup script.
+NescordBot main entry point.
 
-This script serves as the main entry point for the NescordBot application.
+This module serves as the main entry point for the NescordBot application.
 It handles initialization, configuration validation, signal handling,
 and graceful shutdown.
 """
 
 import asyncio
-import os
+import logging
 import signal
 import sys
 from pathlib import Path
 from typing import Optional
 
-# Add src directory to Python path for imports
-# Handle both local development and container deployment
-current_dir = Path(__file__).parent
-src_path = current_dir / "src"
-
-# Add both current directory and src to path for container compatibility
-sys.path.insert(0, str(current_dir))
-sys.path.insert(0, str(src_path))
-
-try:
-    from src.logger import get_logger
-    from src.config import get_config_manager
-except ImportError:
-    # Fallback for container environment where src might be at root level
-    import logger as src_logger
-    import config as src_config
-    
-    def get_logger(name):
-        return src_logger.get_logger(name)
-    
-    def get_config_manager():
-        return src_config.get_config_manager()
+from .bot import main as bot_main
+from .config import get_config_manager
+from .logger import get_logger
 
 
 class BotRunner:
     """
     Bot runner that handles the application lifecycle.
-    
+
     Manages initialization, startup, signal handling, and graceful shutdown.
     """
-    
+
     def __init__(self):
         """Initialize the bot runner."""
-        self.bot: Optional[object] = None
-        self.logger = None
+        self.bot = None
+        self.logger: Optional[logging.Logger] = None  # Will be initialized in setup_logging
         self.shutdown_event = asyncio.Event()
-        
+
     def setup_logging(self) -> None:
         """Set up logging for the runner."""
         try:
@@ -59,46 +40,50 @@ class BotRunner:
         except Exception as e:
             print(f"❌ Failed to initialize logging: {e}")
             sys.exit(1)
-    
+
     def validate_environment(self) -> bool:
         """
         Validate required environment variables and configuration.
-        
+
         Returns:
             bool: True if environment is valid, False otherwise
         """
         try:
-            self.logger.info("Validating environment configuration...")
-            
+            if self.logger:
+                self.logger.info("Validating environment configuration...")
+
             # Check if .env file exists (optional but recommended)
             env_file = Path(".env")
             if env_file.exists():
-                self.logger.info("Found .env file")
+                if self.logger:
+                    self.logger.info("Found .env file")
             else:
-                self.logger.warning("No .env file found - using system environment variables")
-            
+                if self.logger:
+                    self.logger.warning("No .env file found - using system environment variables")
+
             # Validate configuration
             config_manager = get_config_manager()
             config = config_manager.config  # This will raise ValidationError if invalid
-            
-            self.logger.info("Environment validation successful")
-            self.logger.info(f"Discord token: {'*' * 10}{config.discord_token[-4:]}")
-            self.logger.info(f"OpenAI API key: {'*' * 10}{config.openai_api_key[-4:]}")
-            self.logger.info(f"Log level: {config.log_level}")
-            self.logger.info(f"Max audio size: {config.max_audio_size_mb}MB")
-            self.logger.info(f"Speech language: {config.speech_language}")
-            
+
+            if self.logger:
+                self.logger.info("Environment validation successful")
+                self.logger.info(f"Discord token: {'*' * 10}{config.discord_token[-4:]}")
+                self.logger.info(f"OpenAI API key: {'*' * 10}{config.openai_api_key[-4:]}")
+                self.logger.info(f"Log level: {config.log_level}")
+                self.logger.info(f"Max audio size: {config.max_audio_size_mb}MB")
+                self.logger.info(f"Speech language: {config.speech_language}")
+
             return True
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.critical(f"Environment validation failed: {e}")
             else:
                 print(f"❌ Environment validation failed: {e}")
-            
+
             self._print_setup_help()
             return False
-    
+
     def _print_setup_help(self) -> None:
         """Print helpful setup information when validation fails."""
         print("\n" + "=" * 60)
@@ -117,25 +102,26 @@ class BotRunner:
         print("   - Go to https://platform.openai.com/api-keys")
         print("   - Create a new API key")
         print("\n5. Run the bot:")
-        print("   poetry run python run.py")
+        print("   poetry run nescordbot")
         print("\n" + "=" * 60)
-    
+
     def setup_signal_handlers(self) -> None:
         """Set up signal handlers for graceful shutdown."""
+
         def signal_handler(signum: int, frame) -> None:
             """Handle shutdown signals."""
             signal_name = signal.Signals(signum).name
             if self.logger:
                 self.logger.info(f"Received {signal_name} signal, initiating graceful shutdown...")
             else:
-                print(f"\n🛑 Received {signal_name} signal, shutting down...")
-            
+                print(f"Received {signal_name} signal, initiating graceful shutdown...")
+
             # Set the shutdown event
             if asyncio.get_event_loop().is_running():
                 asyncio.create_task(self._shutdown())
             else:
                 self.shutdown_event.set()
-        
+
         # Set up signal handlers for graceful shutdown
         if sys.platform != "win32":
             # Unix-like systems
@@ -145,123 +131,124 @@ class BotRunner:
             # Windows
             signal.signal(signal.SIGINT, signal_handler)
             # SIGBREAK is Windows-specific, check if available
-            if hasattr(signal, 'SIGBREAK'):
+            if hasattr(signal, "SIGBREAK"):
                 signal.signal(signal.SIGBREAK, signal_handler)
-        
+
         if self.logger:
             self.logger.info("Signal handlers configured")
-    
+
     async def _shutdown(self) -> None:
         """Initiate shutdown sequence."""
         self.shutdown_event.set()
-    
+
     async def run_bot(self) -> int:
         """
         Run the bot with proper error handling.
-        
+
         Returns:
             int: Exit code (0 for success, non-zero for error)
         """
         try:
-            self.logger.info("Starting NescordBot...")
-            
-            # Import bot here to avoid import issues during early validation
-            try:
-                from src.bot import main as bot_main
-            except ImportError:
-                # Fallback for container environment
-                import bot as src_bot
-                bot_main = src_bot.main
-            
+            if self.logger:
+                self.logger.info("Starting NescordBot...")
+
             # Create task for bot and shutdown monitoring
             bot_task = asyncio.create_task(bot_main())
             shutdown_task = asyncio.create_task(self.shutdown_event.wait())
-            
+
             # Wait for either bot completion or shutdown signal
             done, pending = await asyncio.wait(
-                [bot_task, shutdown_task],
-                return_when=asyncio.FIRST_COMPLETED
+                [bot_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED
             )
-            
+
             # Handle shutdown
             if shutdown_task in done:
-                self.logger.info("Shutdown signal received, stopping bot...")
-                
+                if self.logger:
+                    self.logger.info("Shutdown signal received, stopping bot...")
+
                 # Cancel the bot task
                 if not bot_task.done():
                     bot_task.cancel()
                     try:
                         await asyncio.wait_for(bot_task, timeout=10.0)
                     except (asyncio.CancelledError, asyncio.TimeoutError):
-                        self.logger.warning("Bot task cancellation timed out")
-                
-                self.logger.info("Bot stopped successfully")
+                        if self.logger:
+                            self.logger.warning("Bot task cancellation timed out")
+
+                if self.logger:
+                    self.logger.info("Bot stopped successfully")
                 return 0
-            
+
             # Bot completed normally (shouldn't happen usually)
             if bot_task in done:
                 try:
                     await bot_task
-                    self.logger.info("Bot completed normally")
+                    if self.logger:
+                        self.logger.info("Bot completed normally")
                     return 0
                 except Exception as e:
-                    self.logger.error(f"Bot task failed: {e}")
+                    if self.logger:
+                        self.logger.error(f"Bot task failed: {e}")
                     return 1
-            
+
             return 0
-            
+
         except KeyboardInterrupt:
-            self.logger.info("Keyboard interrupt received")
+            if self.logger:
+                self.logger.info("Keyboard interrupt received")
             return 0
         except Exception as e:
-            self.logger.critical(f"Unexpected error during bot execution: {e}")
+            if self.logger:
+                self.logger.critical(f"Unexpected error during bot execution: {e}")
+            else:
+                print(f"❌ Unexpected error during bot execution: {e}")
             return 1
         finally:
             # Cancel any remaining tasks
-            if 'pending' in locals():
+            if "pending" in locals():
                 for task in pending:
                     if not task.done():
                         task.cancel()
-    
+
     async def start(self) -> int:
         """
         Start the bot runner.
-        
+
         Returns:
             int: Exit code
         """
         try:
             # Setup logging
             self.setup_logging()
-            
+
             # Validate environment
             if not self.validate_environment():
                 return 1
-            
+
             # Setup signal handlers
             self.setup_signal_handlers()
-            
+
             # Run the bot
             return await self.run_bot()
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.critical(f"Fatal error in bot runner: {e}")
             else:
-                print(f"❌ Fatal error: {e}")
+                print(f"❌ Fatal error in bot runner: {e}")
             return 1
 
 
 def main() -> int:
     """
     Main entry point for the application.
-    
+
     Returns:
         int: Exit code
     """
     print("🚀 Starting NescordBot...")
     print("=" * 50)
-    
+
     try:
         runner = BotRunner()
         return asyncio.run(runner.start())
@@ -271,12 +258,3 @@ def main() -> int:
     except Exception as e:
         print(f"❌ Fatal startup error: {e}")
         return 1
-
-
-if __name__ == "__main__":
-    exit_code = main()
-    if exit_code != 0:
-        print(f"\n❌ Bot exited with code {exit_code}")
-    else:
-        print("\n✅ Bot shutdown complete")
-    sys.exit(exit_code)

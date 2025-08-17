@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from src.config import BotConfig, ConfigManager
+from nescordbot.config import BotConfig, ConfigManager
 
 
 class TestBotConfig:

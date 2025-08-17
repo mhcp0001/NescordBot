@@ -3,13 +3,14 @@ Tests for logging service.
 """
 
 import logging
+import logging.handlers
 import os
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from src.logger import LoggerService, get_logger, get_logger_service
+from nescordbot.logger import LoggerService, get_logger, get_logger_service
 
 
 class TestLoggerService:
@@ -22,9 +23,9 @@ class TestLoggerService:
         self.logs_dir = Path(self.temp_dir) / "logs"
 
         # Clear any existing global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -34,9 +35,9 @@ class TestLoggerService:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
         # Clear global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def test_logger_service_initialization(self):
         """Test LoggerService initialization."""
@@ -161,9 +162,9 @@ class TestGlobalLoggerFunctions:
         self.temp_dir = tempfile.mkdtemp()
 
         # Clear any existing global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -173,9 +174,9 @@ class TestGlobalLoggerFunctions:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
         # Clear global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def test_get_logger_service_singleton(self):
         """Test that get_logger_service returns the same instance."""
@@ -200,7 +201,7 @@ class TestGlobalLoggerFunctions:
 
         try:
             # Import and test convenience functions
-            from src.logger import critical, debug, error, exception, info, warning
+            from nescordbot.logger import critical, debug, error, exception, info, warning
 
             debug("Debug message")
             info("Info message")
@@ -240,9 +241,9 @@ class TestLoggerIntegration:
         self.temp_dir = tempfile.mkdtemp()
 
         # Clear any existing global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def teardown_method(self):
         """Clean up test environment."""
@@ -251,9 +252,9 @@ class TestLoggerIntegration:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
         # Clear global logger service
-        import src.logger
+        import nescordbot.logger
 
-        src.logger._logger_service = None
+        nescordbot.logger._logger_service = None
 
     def test_logger_level_from_config(self):
         """Test logger level configuration from environment."""
@@ -262,7 +263,7 @@ class TestLoggerIntegration:
 
         try:
             # Create a new logger service directly instead of using global
-            from src.logger import LoggerService
+            from nescordbot.logger import LoggerService
 
             logger_service = LoggerService("test_config", str(self.temp_dir))
             logger_service.setup()

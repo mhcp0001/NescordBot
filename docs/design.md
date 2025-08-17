@@ -53,7 +53,7 @@
   - Python標準logging (ログ)
   - pytest + pytest-asyncio (テスト)
   - Black, isort, flake8, mypy (コード品質)
-- **ツール**: 
+- **ツール**:
   - Poetry (依存関係管理)
   - GitHub Actions (CI)
   - Railway (PaaS ホスティング)
@@ -93,7 +93,7 @@
       async def on_ready(self) -> None
       async def on_error(self, event: str, *args, **kwargs) -> None
   ```
-- **内部実装方針**: 
+- **内部実装方針**:
   - Cogの動的ロード・アンロード対応
   - エラーハンドリングの一元化
   - 設定に基づく機能ON/OFF制御
@@ -110,7 +110,7 @@
       def validate_config(config: dict) -> BotConfig
       # Hot reload機能は削除（YAGNI原則）
   ```
-- **内部実装方針**: 
+- **内部実装方針**:
   - Pydanticベースの型安全な設定
   - 環境変数と.envファイルの階層管理
   - 起動時に一度だけ読み込み（再起動で設定変更を反映）
@@ -121,21 +121,21 @@
 - **公開インターフェース**:
   ```python
   from abc import ABC, abstractmethod
-  
+
   class IGitHubService(ABC):  # テスト可能性のための抽象インターフェース
       @abstractmethod
       async def create_pr(...) -> PullRequest: ...
-  
+
   class GitHubService(IGitHubService):
       def __init__(self, token: str, session: aiohttp.ClientSession, cache: aiocache.Cache)
-      async def create_pr(self, repo: str, title: str, body: str, 
+      async def create_pr(self, repo: str, title: str, body: str,
                          files: Dict[str, str]) -> PullRequest
-      async def create_branch(self, repo: str, branch_name: str, 
+      async def create_branch(self, repo: str, branch_name: str,
                             base_branch: str = "main") -> Branch
-      async def commit_files(self, repo: str, branch: str, 
+      async def commit_files(self, repo: str, branch: str,
                            files: Dict[str, str], message: str) -> Commit
   ```
-- **内部実装方針**: 
+- **内部実装方針**:
   - aiohttp による完全非同期処理
   - ETag活用とキャッシュによるレート制限対策
   - 指数バックオフ付きリトライ機構
@@ -155,7 +155,7 @@
       async def get_json(self, key: str) -> Optional[dict]
       async def set_json(self, key: str, value: dict) -> None
   ```
-- **内部実装方針**: 
+- **内部実装方針**:
   - aiosqlite による軽量DB実装
   - シンプルなKey-Valueテーブル構造
   - JSONシリアライズ対応
@@ -176,7 +176,7 @@ Log Service ← Response Formatter ← Discord Response
 ### 3.2 データ変換
 
 - **入力データ形式**: Discord Message オブジェクト
-- **処理過程**: 
+- **処理過程**:
   1. コマンド解析 (discord.py)
   2. パラメータバリデーション (Pydantic)
   3. ビジネスロジック実行
@@ -211,7 +211,7 @@ class PRCreationResult:
 # GitHub REST API v4 ラッパー
 class GitHubAPIClient:
     BASE_URL = "https://api.github.com"
-    
+
     async def create_pull_request(self, repo: str, data: PRData) -> dict
     async def create_blob(self, repo: str, content: str, encoding: str) -> dict
     async def create_tree(self, repo: str, tree_data: List[TreeItem]) -> dict
@@ -229,7 +229,7 @@ class DiscordResponder:
 
 - **APIError**: GitHub/Discord API関連エラー
   - 対処方法: リトライ機構、フォールバック処理、ユーザー通知
-- **ConfigError**: 設定ファイル・環境変数エラー  
+- **ConfigError**: 設定ファイル・環境変数エラー
   - 対処方法: デフォルト値使用、起動時検証、管理者アラート
 - **ValidationError**: 入力データ検証エラー
   - 対処方法: ユーザーフレンドリーなエラーメッセージ、使用例提示
@@ -275,7 +275,7 @@ class SecurityManager:
 
 ### 7.1 単体テスト
 
-- **カバレッジ目標**: 
+- **カバレッジ目標**:
   - Phase 1-2: 60%以上（基本機能の動作確認重視）
   - Phase 3-4: 80%以上（安定性向上）
 - **テストフレームワーク**: pytest + pytest-asyncio + pytest-mock
@@ -330,13 +330,13 @@ class GitHubService:
         # キャッシュ設定（ETag活用）
         self.cache = aiocache.SimpleMemoryCache()
         self.etag_cache: Dict[str, str] = {}
-    
+
     async def _request_with_cache(self, url: str) -> dict:
         """ETagを使用した条件付きリクエスト"""
         headers = {}
         if url in self.etag_cache:
             headers["If-None-Match"] = self.etag_cache[url]
-        
+
         async with self.session.get(url, headers=headers) as resp:
             if resp.status == 304:  # Not Modified
                 return await self.cache.get(url)
@@ -374,17 +374,17 @@ class BotConfig(BaseSettings):
     # Discord設定
     discord_token: str = Field(..., env="DISCORD_TOKEN")
     discord_guild_id: Optional[int] = Field(None, env="DISCORD_GUILD_ID")
-    
-    # GitHub設定  
+
+    # GitHub設定
     github_token: str = Field(..., env="GITHUB_TOKEN")
     target_repository: str = Field(..., env="TARGET_REPOSITORY")
-    
+
     # Database設定
     database_url: str = Field("sqlite:///nescord.db", env="DATABASE_URL")
-    
+
     # Railway設定
     railway_environment: str = Field("production", env="RAILWAY_ENVIRONMENT")
-    
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -490,7 +490,7 @@ class MockGitHubService(IGitHubService): ...
 ## 12. Phase別実装方針
 
 ### Phase 1: MVP基盤 + 最初の機能（2週間）
-- **Week 1**: 
+- **Week 1**:
   - BotCore, ConfigManager (シンプル版), LoggerService (標準logging)
   - GeneralCog (ping, help, status)
   - GitHub Actions CI設定
@@ -499,7 +499,7 @@ class MockGitHubService(IGitHubService): ...
   - エラーハンドリング基盤
   - Railwayへの手動デプロイ
 
-### Phase 2: 開発基盤強化 + 機能追加（2週間）  
+### Phase 2: 開発基盤強化 + 機能追加（2週間）
 - **Week 1**:
   - DatabaseService (aiosqlite版)
   - テスト基盤構築 (pytest + pytest-asyncio)
