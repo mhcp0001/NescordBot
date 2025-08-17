@@ -65,23 +65,23 @@ matches_deny_pattern() {
 # kill コマンドの安全性チェック
 check_kill_safety() {
   local kill_cmd="$1"
-  
+
   # PID 1 (init) の強制終了を特別にブロック
   if [[ "$kill_cmd" =~ kill[[:space:]]+-?9?[[:space:]]*1([[:space:]]|$) ]]; then
     echo "Error: init プロセス (PID 1) の終了は禁止されています" >&2
     return 1
   fi
-  
+
   return 0
 }
 
 # pkill コマンドの安全性チェック (Windows環境では動作しない可能性あり)
 check_pkill_safety() {
   local pkill_cmd="$1"
-  
+
   # プロセス名を抽出
   local process_name=$(echo "$pkill_cmd" | sed -n 's/.*pkill[[:space:]]\+\([^[:space:]]*\).*/\1/p')
-  
+
   # 危険なシステムプロセスかチェック
   for dangerous_proc in "${!DANGEROUS_SYSTEM_PROCESSES[@]}"; do
     if [[ "$process_name" == "$dangerous_proc"* ]]; then
@@ -89,7 +89,7 @@ check_pkill_safety() {
       return 1
     fi
   done
-  
+
   # 安全な開発プロセスかチェック
   for safe_proc in "${!SAFE_DEV_PROCESSES[@]}"; do
     if [[ "$process_name" == "$safe_proc"* ]]; then
@@ -97,7 +97,7 @@ check_pkill_safety() {
       return 0
     fi
   done
-  
+
   # 許可されていないプロセス名
   echo "Error: プロセス '$process_name' の終了は許可されていません" >&2
   return 1
@@ -106,13 +106,13 @@ check_pkill_safety() {
 # systemctl コマンドの安全性チェック
 check_systemctl_safety() {
   local systemctl_cmd="$1"
-  
+
   # --user フラグがあるかチェック
   if [[ "$systemctl_cmd" =~ --user ]]; then
     echo "Info: ユーザースコープの systemctl 操作を許可"
     return 0
   fi
-  
+
   # システム全体への操作はブロック
   echo "Error: システム全体の systemctl 操作は禁止されています。--user フラグを使用してください" >&2
   return 1
@@ -121,25 +121,25 @@ check_systemctl_safety() {
 # 特別な安全性チェック
 perform_special_safety_checks() {
   local cmd="$1"
-  
+
   # kill コマンドのチェック
   if [[ "$cmd" =~ ^kill[[:space:]] ]]; then
     check_kill_safety "$cmd"
     return $?
   fi
-  
+
   # pkill コマンドのチェック
   if [[ "$cmd" =~ ^pkill[[:space:]] ]]; then
     check_pkill_safety "$cmd"
     return $?
   fi
-  
+
   # systemctl コマンドのチェック
   if [[ "$cmd" =~ ^systemctl[[:space:]] ]]; then
     check_systemctl_safety "$cmd"
     return $?
   fi
-  
+
   return 0
 }
 

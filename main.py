@@ -17,33 +17,33 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from src.logger import get_logger
-from src.config import get_config_manager
 from src.bot import main as bot_main
+from src.config import get_config_manager
+from src.logger import get_logger
 
 
 class SimpleRunner:
     """Simplified bot runner for Railway deployment."""
-    
+
     def __init__(self):
         self.logger = None
         self.shutdown_event = asyncio.Event()
-    
+
     def setup_logging(self):
         """Initialize logging."""
         self.logger = get_logger("railway-runner")
         self.logger.info("Railway runner initialized")
-    
+
     def validate_environment(self) -> bool:
         """Validate required environment variables."""
         try:
             config_manager = get_config_manager()
             config = config_manager.config
-            
+
             self.logger.info("Environment validation successful")
             self.logger.info(f"Discord token: {'*' * 10}{config.discord_token[-4:]}")
             self.logger.info(f"OpenAI API key: {'*' * 10}{config.openai_api_key[-4:]}")
-            
+
             return True
         except Exception as e:
             if self.logger:
@@ -51,51 +51,51 @@ class SimpleRunner:
             else:
                 print(f"❌ Environment validation failed: {e}")
             return False
-    
+
     def setup_signal_handlers(self):
         """Set up signal handlers for graceful shutdown."""
+
         def signal_handler(signum: int, frame):
             signal_name = signal.Signals(signum).name
             if self.logger:
                 self.logger.info(f"Received {signal_name} signal, shutting down...")
-            
+
             if asyncio.get_event_loop().is_running():
                 asyncio.create_task(self._shutdown())
             else:
                 self.shutdown_event.set()
-        
+
         # Railway containers typically use SIGTERM
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
-        
+
         if self.logger:
             self.logger.info("Signal handlers configured for Railway")
-    
+
     async def _shutdown(self):
         """Set shutdown event."""
         self.shutdown_event.set()
-    
+
     async def run(self) -> int:
         """Run the bot."""
         try:
             self.setup_logging()
-            
+
             if not self.validate_environment():
                 return 1
-            
+
             self.setup_signal_handlers()
-            
+
             self.logger.info("Starting NescordBot on Railway...")
-            
+
             # Run bot with shutdown monitoring
             bot_task = asyncio.create_task(bot_main())
             shutdown_task = asyncio.create_task(self.shutdown_event.wait())
-            
+
             done, pending = await asyncio.wait(
-                [bot_task, shutdown_task],
-                return_when=asyncio.FIRST_COMPLETED
+                [bot_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED
             )
-            
+
             # Handle shutdown
             if shutdown_task in done:
                 self.logger.info("Shutdown signal received, stopping bot...")
@@ -105,10 +105,10 @@ class SimpleRunner:
                         await asyncio.wait_for(bot_task, timeout=10.0)
                     except (asyncio.CancelledError, asyncio.TimeoutError):
                         self.logger.warning("Bot task cancellation timed out")
-                
+
                 self.logger.info("Bot stopped successfully")
                 return 0
-            
+
             # Bot completed
             if bot_task in done:
                 try:
@@ -118,9 +118,9 @@ class SimpleRunner:
                 except Exception as e:
                     self.logger.error(f"Bot task failed: {e}")
                     return 1
-            
+
             return 0
-            
+
         except Exception as e:
             if self.logger:
                 self.logger.critical(f"Fatal error: {e}")
@@ -129,7 +129,7 @@ class SimpleRunner:
             return 1
         finally:
             # Cancel remaining tasks
-            if 'pending' in locals():
+            if "pending" in locals():
                 for task in pending:
                     if not task.done():
                         task.cancel()
@@ -138,18 +138,18 @@ class SimpleRunner:
 def main():
     """Main entry point for Railway deployment."""
     print("🚀 Starting NescordBot on Railway...")
-    
+
     try:
         runner = SimpleRunner()
         exit_code = asyncio.run(runner.run())
-        
+
         if exit_code == 0:
             print("✅ Bot shutdown complete")
         else:
             print(f"❌ Bot exited with code {exit_code}")
-        
+
         return exit_code
-        
+
     except KeyboardInterrupt:
         print("👋 Bot stopped by signal")
         return 0

@@ -109,7 +109,7 @@ EOF
 
 3. Idea Brainstorming: Obtain multi-perspective feedback on new plans or ideas to expand creative thinking.
    * Example: "Suggest additional approaches for our internal communication enhancement event proposal"
-  
+
 4. Structure & Planning Development: Create outlines and structural frameworks for reports, presentations, and projects.
     * Example: "Help develop a new service proposal by identifying necessary components and creating a draft structure"
 
@@ -243,7 +243,7 @@ poetry export -f requirements.txt --output requirements.txt --without-hashes
 - **src/bot.py**: Main bot entry point with NescordBot class that extends commands.Bot
   - Handles bot initialization, event listeners, and voice message detection
   - Manages cog loading and slash command synchronization
-  
+
 - **Cogs System**: Modular command groups loaded dynamically
   - **src/cogs/general.py**: General commands (/help, /status, /ping)
   - **src/cogs/voice.py**: Voice processing with OpenAI Whisper transcription and GPT processing

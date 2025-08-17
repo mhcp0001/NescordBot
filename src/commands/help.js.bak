@@ -4,7 +4,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('help')
         .setDescription('Botの使い方を表示します'),
-    
+
     async execute(interaction) {
         const helpMessage = `
 **Nescordbot の使い方**

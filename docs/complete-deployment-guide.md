@@ -54,7 +54,7 @@
    ```
    General Permissions:
    ✅ Read Messages/View Channels
-   
+
    Text Permissions:
    ✅ Send Messages
    ✅ Use Slash Commands
@@ -63,7 +63,7 @@
    ✅ Read Message History
    ✅ Add Reactions
    ✅ Use External Emojis
-   
+
    Voice Permissions:
    (現在は不要、将来の機能用)
    ```
@@ -134,7 +134,7 @@ https://discord.com/oauth2/authorize?client_id=1391291495025217616&permissions=0
    # 必須設定
    DISCORD_TOKEN = MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
    OPENAI_API_KEY = sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
-   
+
    # オプション設定（推奨）
    LOG_LEVEL = INFO
    MAX_AUDIO_SIZE_MB = 25

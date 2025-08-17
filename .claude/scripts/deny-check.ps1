@@ -23,8 +23,8 @@ $settingsPath = ".\.claude\settings.local.json"
 if (Test-Path $settingsPath) {
     try {
         $settings = Get-Content $settingsPath | ConvertFrom-Json
-        $denyPatterns = $settings.permissions.deny | Where-Object { $_ -like "Bash(*" } | ForEach-Object { 
-            $_ -replace "^Bash\(", "" -replace "\)$", "" 
+        $denyPatterns = $settings.permissions.deny | Where-Object { $_ -like "Bash(*" } | ForEach-Object {
+            $_ -replace "^Bash\(", "" -replace "\)$", ""
         }
     } catch {
         $denyPatterns = @()
@@ -47,23 +47,23 @@ $dangerousSystemProcesses = @(
 # 特別な安全性チェック関数
 function Test-KillSafety {
     param([string]$killCmd)
-    
+
     # PID 1の終了を特別にブロック
     if ($killCmd -match "kill\s+-?9?\s*1(\s|$)") {
         Write-Host "Info: initプロセス (PID 1) の終了は禁止されています - ブロックしました"
         return $false
     }
-    
+
     return $true
 }
 
 function Test-PkillSafety {
     param([string]$pkillCmd)
-    
+
     # プロセス名を抽出
     if ($pkillCmd -match "pkill\s+(\S+)") {
         $processName = $Matches[1]
-        
+
         # 危険なシステムプロセスかチェック
         foreach ($dangerousProc in $dangerousSystemProcesses) {
             if ($processName -like "$dangerousProc*") {
@@ -71,29 +71,29 @@ function Test-PkillSafety {
                 return $false
             }
         }
-        
+
         # 安全な開発プロセスかチェック
         foreach ($safeProc in $safeDevelopmentProcesses) {
             if ($processName -like "$safeProc*") {
                 return $true
             }
         }
-        
+
         Write-Host "Info: プロセス '$processName' の終了は許可されていません - ブロックしました"
         return $false
     }
-    
+
     return $true
 }
 
 function Test-SystemctlSafety {
     param([string]$systemctlCmd)
-    
+
     # --userフラグがあるかチェック
     if ($systemctlCmd -match "--user") {
         return $true
     }
-    
+
     Write-Host "Info: システム全体のsystemctl操作は禁止されています - ブロックしました"
     return $false
 }
@@ -101,26 +101,26 @@ function Test-SystemctlSafety {
 # 特別な安全性チェック
 function Test-SpecialSafety {
     param([string]$cmd)
-    
+
     if ($cmd -match "^kill\s") {
         return Test-KillSafety $cmd
     }
-    
+
     if ($cmd -match "^pkill\s") {
         return Test-PkillSafety $cmd
     }
-    
+
     if ($cmd -match "^systemctl\s") {
         return Test-SystemctlSafety $cmd
     }
-    
+
     return $true
 }
 
 # パターンマッチング関数
 function Test-DenyPattern {
     param([string]$cmd, [string]$pattern)
-    
+
     $cmd = $cmd.Trim()
     return $cmd -like $pattern
 }
@@ -138,7 +138,7 @@ if (-not (Test-SpecialSafety $command)) {
 # 拒否パターンチェック
 foreach ($pattern in $denyPatterns) {
     if (-not $pattern) { continue }
-    
+
     if (Test-DenyPattern $command $pattern) {
         Write-Host "Info: コマンドが拒否されました: '$command' (パターン: '$pattern') - ブロックしました"
         exit 2
@@ -152,10 +152,10 @@ foreach ($cmdPart in $commandParts) {
     if (-not (Test-SpecialSafety $cmdPart)) {
         exit 2
     }
-    
+
     foreach ($pattern in $denyPatterns) {
         if (-not $pattern) { continue }
-        
+
         if (Test-DenyPattern $cmdPart $pattern) {
             Write-Host "Info: コマンドが拒否されました: '$cmdPart' (パターン: '$pattern') - ブロックしました"
             exit 2

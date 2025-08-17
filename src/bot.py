@@ -15,6 +15,7 @@ from discord.ext import commands
 try:
     from src.config import get_config_manager
     from src.logger import get_logger
+    from src.services import DatabaseService
 except ImportError:
     # Fallback for Railway deployment
     import sys
@@ -27,10 +28,12 @@ except ImportError:
     try:
         from src.config import get_config_manager
         from src.logger import get_logger
+        from src.services import DatabaseService
     except ImportError:
         # Direct import as last resort
         from config import get_config_manager  # type: ignore
         from logger import get_logger  # type: ignore
+        from services import DatabaseService  # type: ignore
 
 
 class NescordBot(commands.Bot):
@@ -67,6 +70,10 @@ class NescordBot(commands.Bot):
         self.data_dir = Path("data")
         self.data_dir.mkdir(exist_ok=True)
 
+        # Initialize database service
+        db_path = self.config.database_url if hasattr(self.config, "database_url") else "nescord.db"
+        self.database_service = DatabaseService(db_path)
+
         self.logger.info("NescordBot instance created")
 
     async def setup_hook(self) -> None:
@@ -79,6 +86,10 @@ class NescordBot(commands.Bot):
         self.logger.info("Starting bot setup...")
 
         try:
+            # Initialize database service
+            await self.database_service.initialize()
+            self.logger.info("Database service initialized")
+
             # Load cogs
             await self._load_cogs()
 
@@ -273,6 +284,12 @@ class NescordBot(commands.Bot):
     async def close(self) -> None:
         """Clean up resources when bot is shutting down."""
         self.logger.info("Bot is shutting down...")
+
+        # Close database service
+        if hasattr(self, "database_service") and self.database_service.is_initialized:
+            await self.database_service.close()
+            self.logger.info("Database service closed")
+
         await super().close()
         self.logger.info("Bot shutdown complete")
 
