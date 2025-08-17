@@ -15,7 +15,7 @@ from discord.ext import commands
 
 from .config import get_config_manager
 from .logger import get_logger
-from .services import DatabaseService, GitHubService
+from .services import DatabaseService, GitHubService, ObsidianService
 
 
 class NescordBot(commands.Bot):
@@ -68,6 +68,14 @@ class NescordBot(commands.Bot):
         else:
             self.logger.info("GitHub integration disabled (missing configuration)")
 
+        # Initialize Obsidian service if configured
+        self.obsidian_service: Optional[ObsidianService] = None
+        if self.config.obsidian_vault_path:
+            self.obsidian_service = ObsidianService(self.config)
+            self.logger.info("Obsidian service initialized")
+        else:
+            self.logger.info("Obsidian integration disabled (missing configuration)")
+
         self.logger.info("NescordBot instance created")
 
     async def setup_hook(self) -> None:
@@ -88,6 +96,11 @@ class NescordBot(commands.Bot):
             if self.github_service:
                 await self.github_service.start()
                 self.logger.info("GitHub service started")
+
+            # Initialize Obsidian service if available
+            if self.obsidian_service:
+                await self.obsidian_service.initialize()
+                self.logger.info("Obsidian service started")
 
             # Load cogs
             await self._load_cogs()

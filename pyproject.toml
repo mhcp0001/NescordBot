@@ -24,6 +24,7 @@ python-dateutil = "^2.8.2"
 pytz = "^2023.3"
 aiosqlite = "^0.19.0"
 colorlog = "^6.8.0"
+aiofiles = "^24.1.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.0"
@@ -38,6 +39,7 @@ bandit = {extras = ["toml"], version = "^1.7.5"}
 safety = "^2.3.5"
 ruff = "^0.12.9"
 pytest-xdist = "^3.8.0"
+types-aiofiles = "^24.1.0.20250809"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
