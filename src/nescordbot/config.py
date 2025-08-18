@@ -6,11 +6,12 @@ for type validation and python-dotenv for environment variable loading.
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class BotConfig(BaseModel):
@@ -38,8 +39,38 @@ class BotConfig(BaseModel):
     github_repo_owner: Optional[str] = Field(default=None, description="GitHub repository owner")
     github_repo_name: Optional[str] = Field(default=None, description="GitHub repository name")
 
-    # Obsidian integration settings (for future use)
+    # Obsidian integration settings
     obsidian_vault_path: Optional[str] = Field(default=None, description="Obsidian vault path")
+
+    # GitHub Obsidian integration settings
+    github_obsidian_enabled: bool = Field(
+        default=False, description="Enable GitHub-Obsidian integration"
+    )
+    github_obsidian_base_path: str = Field(
+        default="obsidian_sync", description="Base path for GitHub-Obsidian sync"
+    )
+    github_obsidian_branch: str = Field(
+        default="main", description="GitHub branch for Obsidian sync"
+    )
+    github_obsidian_batch_size: int = Field(
+        default=10, description="Batch size for GitHub operations"
+    )
+    github_obsidian_batch_interval: int = Field(
+        default=300, description="Batch processing interval in seconds"
+    )
+
+    # Instance management settings
+    instance_id: Optional[str] = Field(
+        default=None, description="Unique instance identifier for multi-instance setups"
+    )
+
+    # Security settings
+    max_file_size_kb: int = Field(
+        default=1024, description="Maximum file size in KB for security validation"
+    )
+    enable_content_validation: bool = Field(
+        default=True, description="Enable content security validation"
+    )
 
     @field_validator("discord_token")
     @classmethod
@@ -93,6 +124,113 @@ class BotConfig(BaseModel):
                 raise ValueError("Speech language should be a 2-letter language code")
         return v.lower()
 
+    @field_validator("github_repo_owner")
+    @classmethod
+    def validate_github_repo_owner(cls, v):
+        """Validate GitHub repository owner name."""
+        if v is None:
+            return v
+
+        from .security import SecurityValidator
+
+        try:
+            return SecurityValidator.validate_github_owner_name(v)
+        except ValueError as e:
+            raise ValueError(f"Invalid GitHub repository owner: {e}")
+
+    @field_validator("github_repo_name")
+    @classmethod
+    def validate_github_repo_name(cls, v):
+        """Validate GitHub repository name."""
+        if v is None:
+            return v
+
+        from .security import SecurityValidator
+
+        try:
+            return SecurityValidator.validate_github_repository_name(v)
+        except ValueError as e:
+            raise ValueError(f"Invalid GitHub repository name: {e}")
+
+    @field_validator("github_obsidian_base_path")
+    @classmethod
+    def validate_github_obsidian_base_path(cls, v):
+        """Validate GitHub Obsidian base path."""
+        from .security import SecurityValidator
+
+        try:
+            return SecurityValidator.validate_file_path(v)
+        except Exception as e:
+            raise ValueError(f"Invalid GitHub Obsidian base path: {e}")
+
+    @field_validator("github_obsidian_branch")
+    @classmethod
+    def validate_github_obsidian_branch(cls, v):
+        """Validate GitHub branch name."""
+        if not v:
+            raise ValueError("GitHub branch name cannot be empty")
+
+        # GitHub branch name validation
+        if not re.match(r"^[a-zA-Z0-9._/-]{1,250}$", v):
+            raise ValueError("Invalid GitHub branch name format")
+
+        # Cannot start with dot, slash, or hyphen
+        if v.startswith((".", "/", "-")):
+            raise ValueError("Branch name cannot start with '.', '/', or '-'")
+
+        return v
+
+    @field_validator("github_obsidian_batch_size")
+    @classmethod
+    def validate_batch_size(cls, v):
+        """Validate batch size."""
+        if v <= 0:
+            raise ValueError("Batch size must be positive")
+        if v > 100:
+            raise ValueError("Batch size should not exceed 100")
+        return v
+
+    @field_validator("github_obsidian_batch_interval")
+    @classmethod
+    def validate_batch_interval(cls, v):
+        """Validate batch interval."""
+        if v < 60:
+            raise ValueError("Batch interval must be at least 60 seconds")
+        if v > 3600:
+            raise ValueError("Batch interval should not exceed 3600 seconds (1 hour)")
+        return v
+
+    @field_validator("max_file_size_kb")
+    @classmethod
+    def validate_max_file_size_kb(cls, v):
+        """Validate maximum file size."""
+        if v <= 0:
+            raise ValueError("Maximum file size must be positive")
+        if v > 10240:  # 10MB
+            raise ValueError("Maximum file size should not exceed 10MB")
+        return v
+
+    @model_validator(mode="after")
+    def validate_github_integration(self):
+        """Validate GitHub integration settings consistency."""
+        if self.github_obsidian_enabled:
+            if not self.github_token:
+                raise ValueError(
+                    "GitHub token is required when GitHub-Obsidian integration is enabled"
+                )
+            if not self.github_repo_owner:
+                raise ValueError(
+                    "GitHub repository owner is required when "
+                    "GitHub-Obsidian integration is enabled"
+                )
+            if not self.github_repo_name:
+                raise ValueError(
+                    "GitHub repository name is required when "
+                    "GitHub-Obsidian integration is enabled"
+                )
+
+        return self
+
 
 class ConfigManager:
     """
@@ -134,16 +272,35 @@ class ConfigManager:
         """
         if self._config is None:
             self._config = BotConfig(
+                # Required settings
                 discord_token=os.getenv("DISCORD_TOKEN", ""),
                 openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+                # Optional settings with defaults
                 log_level=os.getenv("LOG_LEVEL", "INFO"),
                 max_audio_size_mb=int(os.getenv("MAX_AUDIO_SIZE_MB", "25")),
                 speech_language=os.getenv("SPEECH_LANGUAGE", "ja"),
                 database_url=os.getenv("DATABASE_URL", "sqlite:///data/nescordbot.db"),
+                # GitHub integration settings
                 github_token=os.getenv("GITHUB_TOKEN"),
                 github_repo_owner=os.getenv("GITHUB_REPO_OWNER"),
                 github_repo_name=os.getenv("GITHUB_REPO_NAME"),
+                # Obsidian integration settings
                 obsidian_vault_path=os.getenv("OBSIDIAN_VAULT_PATH"),
+                # GitHub Obsidian integration settings
+                github_obsidian_enabled=os.getenv("GITHUB_OBSIDIAN_ENABLED", "false").lower()
+                == "true",
+                github_obsidian_base_path=os.getenv("GITHUB_OBSIDIAN_BASE_PATH", "obsidian_sync"),
+                github_obsidian_branch=os.getenv("GITHUB_OBSIDIAN_BRANCH", "main"),
+                github_obsidian_batch_size=int(os.getenv("GITHUB_OBSIDIAN_BATCH_SIZE", "10")),
+                github_obsidian_batch_interval=int(
+                    os.getenv("GITHUB_OBSIDIAN_BATCH_INTERVAL", "300")
+                ),
+                # Instance management settings
+                instance_id=os.getenv("INSTANCE_ID"),
+                # Security settings
+                max_file_size_kb=int(os.getenv("MAX_FILE_SIZE_KB", "1024")),
+                enable_content_validation=os.getenv("ENABLE_CONTENT_VALIDATION", "true").lower()
+                == "true",
             )
         return self._config
 
@@ -152,6 +309,51 @@ class ConfigManager:
         self._config = None
         self._load_env()
 
+    def validate_github_integration_setup(self) -> bool:
+        """
+        Validate that GitHub integration is properly configured.
+
+        Returns:
+            bool: True if GitHub integration is ready to use
+        """
+        config = self.config
+
+        if not config.github_obsidian_enabled:
+            return False
+
+        required_fields = [
+            config.github_token,
+            config.github_repo_owner,
+            config.github_repo_name,
+        ]
+
+        return all(field is not None and field.strip() for field in required_fields)
+
+    def get_instance_id(self) -> str:
+        """
+        Get or generate unique instance identifier.
+
+        Returns:
+            str: Unique instance identifier
+        """
+        config = self.config
+
+        if config.instance_id:
+            return config.instance_id
+
+        # Generate instance ID based on environment
+        import hashlib
+        import socket
+
+        hostname = socket.gethostname()
+        process_id = os.getpid()
+        unique_string = f"{hostname}_{process_id}_{os.getenv('RAILWAY_DEPLOYMENT_ID', 'local')}"
+
+        # Create short hash for instance ID
+        instance_hash = hashlib.md5(unique_string.encode()).hexdigest()[:8]
+        return f"nescord_{instance_hash}"
+
+    # Existing getter methods
     def get_discord_token(self) -> str:
         """Get Discord bot token."""
         return self.config.discord_token
@@ -191,6 +393,35 @@ class ConfigManager:
     def get_obsidian_vault_path(self) -> Optional[str]:
         """Get Obsidian vault path."""
         return self.config.obsidian_vault_path
+
+    # New getter methods for GitHub Obsidian integration
+    def is_github_obsidian_enabled(self) -> bool:
+        """Check if GitHub Obsidian integration is enabled."""
+        return self.config.github_obsidian_enabled
+
+    def get_github_obsidian_base_path(self) -> str:
+        """Get GitHub Obsidian base path."""
+        return self.config.github_obsidian_base_path
+
+    def get_github_obsidian_branch(self) -> str:
+        """Get GitHub Obsidian branch."""
+        return self.config.github_obsidian_branch
+
+    def get_github_obsidian_batch_size(self) -> int:
+        """Get GitHub Obsidian batch size."""
+        return self.config.github_obsidian_batch_size
+
+    def get_github_obsidian_batch_interval(self) -> int:
+        """Get GitHub Obsidian batch interval."""
+        return self.config.github_obsidian_batch_interval
+
+    def get_max_file_size_kb(self) -> int:
+        """Get maximum file size in KB."""
+        return self.config.max_file_size_kb
+
+    def is_content_validation_enabled(self) -> bool:
+        """Check if content validation is enabled."""
+        return self.config.enable_content_validation
 
 
 # Global configuration manager instance
