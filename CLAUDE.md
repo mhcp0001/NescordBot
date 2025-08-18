@@ -536,3 +536,53 @@ poetry export -f requirements.txt --output requirements.txt --without-hashes
 - Audio files temporarily stored in data/ directory during processing
 - Maximum audio file size: 25MB default
 - Logging outputs to both console and bot.log file
+
+## セッション引き継ぎ情報 (2025-08-18)
+
+### 現在の開発状況
+- **進行中タスク**: Task 3.7.1 (Issue #48) - Obsidian GitHub統合基盤構築
+- **ブランチ**: feature/obsidian-github-base (作成予定)
+- **完了状況**: 依存関係追加完了 (PyGithub 2.1+, GitPython 3.1+, pathvalidate)
+
+### 前回セッション完了事項
+1. **Issue #29クローズ**: Obsidian基本統合完了、GitHub統合設計完了
+2. **GitHub Issues作成**: #48-52 (Task 3.7.1-3.7.5)
+3. **タスク分解完了**: `docs/operations/tasks.md` 更新
+4. **設計文書作成**: `docs/design/obsidian_github_integration.md` (2957行)
+5. **CI/CD学習**: Squash merge によるmerge commit問題解決
+
+### 次セッションの作業開始点
+
+#### Task 3.7.1 継続作業 (Issue #48)
+**完了済み**:
+- ✅ PyGithub 2.1+ 追加
+- ✅ GitPython 3.1+ 追加
+- ✅ pathvalidate 追加
+
+**次の実装項目**:
+1. SecurityValidator クラス実装
+   - XSS・インジェクション攻撃検出
+   - ファイル名・パス検証機能
+2. BotConfig クラス拡張
+   - GitHub設定プロパティ追加
+   - 複数インスタンス対応設定
+3. 設定バリデーション機能実装
+
+#### 実装ガイダンス
+- **ブランチ戦略**: `feature/obsidian-github-base` で開始
+- **推定残時間**: 3時間 (SecurityValidator + BotConfig拡張)
+- **テスト要件**: SecurityValidator の包括的テスト必須
+
+### 重要な設計決定事項
+- **複数インスタンス対応**: インスタンスID分離方式採用
+- **セキュリティ重視**: XSS・パストラバーサル防止必須
+- **永続化戦略**: SQLiteキュー + Dead Letter Queue
+- **エラーハンドリング**: 指数バックオフ + サーキットブレーカー
+
+### Serenaメモリ参照
+詳細な履歴は `session_history_obsidian_github_integration` メモリに記録済み。
+
+### 注意事項
+- Task 3.7.1完了後、即座にTask 3.7.2 (Git操作層) に進行可能
+- 各タスクは1ブランチ1PR原則で実装
+- CI validation: コミットメッセージに `(refs #48)` 必須
