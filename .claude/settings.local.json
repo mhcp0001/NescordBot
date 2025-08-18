@@ -102,7 +102,13 @@
       "Bash(gh api:*)",
       "Bash(gh run list:*)",
       "Bash(gh run view:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__list_dir",
+      "mcp__serena__search_for_pattern",
+      "mcp__serena__find_symbol",
+      "mcp__serena__replace_symbol_body",
+      "Bash(poetry lock:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
