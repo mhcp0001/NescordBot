@@ -279,14 +279,106 @@
 - **ブランチ**: `feature/github-discord-commands`
 
 #### Task 3.7: Obsidian連携機能
-- [ ] Obsidian Vault構造の定義
-- [ ] Fleeting noteテンプレート作成
-- [ ] フロントマター生成処理
-- [ ] ファイル命名規則実装
+- [x] Obsidian Vault構造の定義
+- [x] Fleeting noteテンプレート作成
+- [x] フロントマター生成処理
+- [x] ファイル命名規則実装
 - **完了条件**: Obsidian形式のMarkdownが生成される
 - **依存**: Task 3.6
 - **推定時間**: 3時間
 - **ブランチ**: `feature/obsidian-integration`
+- **状態**: ✅ 完了（2025-08-17）
+
+##### Task 3.7.1: Obsidian GitHub統合 - 基盤構築 🔥 高優先度
+- [ ] **依存関係追加**
+  - [ ] PyGithub 2.1+ の追加
+  - [ ] GitPython 3.1+ の追加
+  - [ ] pathvalidate の追加（ファイル名検証用）
+- [ ] **セキュリティコンポーネント**
+  - [ ] SecurityValidator クラス実装
+  - [ ] XSS・インジェクション攻撃検出
+  - [ ] ファイル名・パス検証機能
+- [ ] **設定管理拡張**
+  - [ ] BotConfig クラスの拡張（複数インスタンス対応）
+  - [ ] 環境変数設定の追加
+  - [ ] 設定バリデーション機能の実装
+- **完了条件**: GitHub統合の基盤となるライブラリとセキュリティ機能が整う
+- **依存**: Task 3.7
+- **推定時間**: 4時間（2日）
+- **ブランチ**: `feature/obsidian-github-base`
+
+##### Task 3.7.2: Obsidian GitHub統合 - Git操作層 🔥 高優先度
+- [ ] **GitOperationManager実装**
+  - [ ] ローカルリポジトリ管理
+  - [ ] 安全なGit操作（パストラバーサル防止）
+  - [ ] コミット・プッシュ機能
+- [ ] **競合回避機能**
+  - [ ] インスタンス分離方式
+  - [ ] ファイルロック機構
+  - [ ] 並行実行制御
+- [ ] **エラーハンドリング**
+  - [ ] Git操作失敗時の処理
+  - [ ] ネットワーク障害対応
+  - [ ] ローカルキャッシュフォールバック
+- **完了条件**: 安全なGit操作が可能になる
+- **依存**: Task 3.7.1
+- **推定時間**: 4時間（2日）
+- **ブランチ**: `feature/obsidian-git-operations`
+
+##### Task 3.7.3: Obsidian GitHub統合 - キュー永続化 🔥 高優先度
+- [ ] **SQLiteキューテーブル設計**
+  - [ ] obsidian_file_queue テーブル作成
+  - [ ] obsidian_dead_letter_queue テーブル作成
+  - [ ] インデックス最適化
+- [ ] **PersistentQueue実装**
+  - [ ] キューCRUD操作
+  - [ ] Bot再起動時の復旧機能
+  - [ ] 失敗タスクのDLQ移動
+- [ ] **キュー復旧機能**
+  - [ ] processing状態タスクの検出
+  - [ ] pending状態への復旧ロジック
+  - [ ] メモリキューへの復元
+- **完了条件**: Bot再起動後もタスクが継続処理される
+- **依存**: Task 3.7.2
+- **推定時間**: 2時間（1日）
+- **ブランチ**: `feature/obsidian-queue-sqlite`
+
+##### Task 3.7.4: Obsidian GitHub統合 - 認証とバッチ処理 🔥 高優先度
+- [ ] **GitHubAuthManager実装**
+  - [ ] PAT認証実装
+  - [ ] GitHub App認証実装（将来対応）
+  - [ ] 認証方式の動的切り替え
+- [ ] **BatchProcessor更新**
+  - [ ] SQLite永続化統合
+  - [ ] キューID管理
+  - [ ] バッチ処理最適化
+- [ ] **エラーハンドリング強化**
+  - [ ] 指数バックオフリトライ
+  - [ ] サーキットブレーカーパターン
+  - [ ] GitHub APIエラー処理
+- **完了条件**: GitHub APIを使用したバッチ処理が安定動作する
+- **依存**: Task 3.7.3
+- **推定時間**: 4時間（2日）
+- **ブランチ**: `feature/obsidian-github-auth`
+
+##### Task 3.7.5: Obsidian GitHub統合 - 統合テスト 🔥 高優先度
+- [ ] **ObsidianGitHubService統合**
+  - [ ] 全コンポーネント統合
+  - [ ] 既存ObsidianServiceとの置き換え
+  - [ ] 設定による動作切り替え実装
+- [ ] **包括的テスト実装**
+  - [ ] SecurityValidator テスト
+  - [ ] GitOperationManager テスト
+  - [ ] PersistentQueue テスト
+  - [ ] BatchProcessor テスト
+- [ ] **エンドツーエンドテスト**
+  - [ ] Discord→GitHub→Obsidian vault 全体フロー
+  - [ ] エラー時のフォールバック確認
+  - [ ] 既存機能との互換性確認
+- **完了条件**: GitHub統合が完全に動作し、テストカバレッジ80%達成
+- **依存**: Task 3.7.4
+- **推定時間**: 2時間（1日）
+- **ブランチ**: `test/obsidian-github-integration`
 
 #### Task 3.8: Railway CD設定
 - [ ] .github/workflows/deploy.ymlの作成
