@@ -28,7 +28,6 @@ pathvalidate = "^3.2.0"
 pydantic = "^2.5.0"
 PyGithub = "^2.1.1"
 GitPython = "^3.1.40"
-pathvalidate = "^3.2.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.0"
