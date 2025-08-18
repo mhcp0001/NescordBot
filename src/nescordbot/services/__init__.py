@@ -6,14 +6,6 @@ and infrastructure operations for the bot.
 """
 
 from .database import DatabaseService, IDataStore
-from .git_operations import BatchOperation, GitOperationResult, GitOperationService
 from .github import GitHubService
 
-__all__ = [
-    "DatabaseService",
-    "IDataStore",
-    "GitHubService",
-    "GitOperationService",
-    "GitOperationResult",
-    "BatchOperation",
-]
+__all__ = ["DatabaseService", "IDataStore", "GitHubService"]
