@@ -107,7 +107,8 @@ class TestBotConfig:
         assert config.speech_language == "ja"
         assert config.database_url == "sqlite:///data/nescordbot.db"
         assert config.github_token is None
-        assert config.github_repo is None
+        assert config.github_repo_owner is None
+        assert config.github_repo_name is None
         assert config.obsidian_vault_path is None
 
 
@@ -125,7 +126,8 @@ class TestConfigManager:
             "SPEECH_LANGUAGE",
             "DATABASE_URL",
             "GITHUB_TOKEN",
-            "GITHUB_REPO",
+            "GITHUB_REPO_OWNER",
+            "GITHUB_REPO_NAME",
             "OBSIDIAN_VAULT_PATH",
         ]
         for var in test_vars:
@@ -172,10 +174,12 @@ class TestConfigManager:
 
     def test_config_manager_missing_required(self):
         """Test ConfigManager with missing required configuration."""
-        manager = ConfigManager()
+        # Create a temporary non-existent .env file path to avoid loading actual .env
+        with tempfile.NamedTemporaryFile(suffix=".env", delete=True) as tmp_env:
+            manager = ConfigManager(env_file=tmp_env.name + "_nonexistent")
 
-        with pytest.raises(ValidationError):
-            _ = manager.config
+            with pytest.raises(ValidationError):
+                _ = manager.config
 
     def test_config_manager_reload(self):
         """Test ConfigManager reload functionality."""
@@ -217,7 +221,8 @@ class TestConfigManager:
         assert manager.get_speech_language() == "en"
         assert manager.get_database_url() == "sqlite:///data/nescordbot.db"
         assert manager.get_github_token() is None
-        assert manager.get_github_repo() is None
+        assert manager.get_github_repo_owner() is None
+        assert manager.get_github_repo_name() is None
         assert manager.get_obsidian_vault_path() is None
 
     def teardown_method(self):
@@ -231,7 +236,8 @@ class TestConfigManager:
             "SPEECH_LANGUAGE",
             "DATABASE_URL",
             "GITHUB_TOKEN",
-            "GITHUB_REPO",
+            "GITHUB_REPO_OWNER",
+            "GITHUB_REPO_NAME",
             "OBSIDIAN_VAULT_PATH",
         ]
         for var in test_vars:
