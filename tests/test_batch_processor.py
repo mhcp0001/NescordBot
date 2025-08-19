@@ -133,12 +133,14 @@ class TestBatchProcessor:
         assert file_request.content == "# Test Content"
         assert file_request.directory == "notes"
         assert file_request.priority == 1
-        # Check kwargs for idempotency_key
-        if hasattr(call_args, "kwargs"):
-            assert call_args.kwargs.get("idempotency_key") == "test-key"
+
+        # Check how idempotency_key was passed - could be positional or keyword
+        if len(call_args[0]) > 1:
+            # Passed as positional argument
+            assert call_args[0][1] == "test-key"
         else:
-            kwargs = call_args[1] if len(call_args) > 1 else {}
-            assert kwargs.get("idempotency_key") == "test-key"
+            # Passed as keyword argument
+            assert call_args[1].get("idempotency_key") == "test-key"
 
     @pytest.mark.asyncio
     async def test_enqueue_auto_initialize(self, batch_processor):
@@ -274,6 +276,10 @@ class TestBatchProcessor:
     @pytest.mark.asyncio
     async def test_get_processing_status_not_initialized(self, batch_processor):
         """Test getting processing status when not initialized."""
+        # Ensure processor is not initialized
+        batch_processor._initialized = False
+        batch_processor._processing_task = None
+
         status = await batch_processor.get_processing_status()
 
         assert status["initialized"] is False
@@ -314,12 +320,18 @@ class TestBatchProcessor:
         """Test cleanup handles errors gracefully."""
         await batch_processor.initialize()
 
+        # Verify initialized state
+        assert batch_processor._initialized is True
+
         # Make cleanup methods fail
         batch_processor.queue.cleanup.side_effect = Exception("Cleanup error")
+        batch_processor.git_operations.cleanup.side_effect = Exception("Git cleanup error")
+        batch_processor.auth_manager.cleanup.side_effect = Exception("Auth cleanup error")
 
         # Should not raise exception
         await batch_processor.cleanup()
 
+        # Should still set initialized to False even with errors
         assert batch_processor._initialized is False
 
     @pytest.mark.asyncio

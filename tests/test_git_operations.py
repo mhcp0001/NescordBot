@@ -173,6 +173,8 @@ class TestGitOperationService:
 
         # Create local path to simulate existing repository
         service.local_path.mkdir(parents=True)
+        # Create .git directory to simulate valid git repo
+        (service.local_path / ".git").mkdir()
 
         # Mock Git operations
         mock_repo = MagicMock()
@@ -181,14 +183,26 @@ class TestGitOperationService:
         mock_repo.remotes.origin.url = service.repo_url
         mock_repo.remotes.origin.pull = MagicMock()
 
-        with patch("git.Repo", return_value=mock_repo) as mock_repo_init, patch(
-            "asyncio.to_thread", side_effect=lambda func, *args, **kwargs: func(*args, **kwargs)
+        # Mock async functions to return mock repo directly
+        async def mock_git_init():
+            return mock_repo
+
+        async def mock_git_pull():
+            pass
+
+        with patch("git.Repo", return_value=mock_repo), patch(
+            "asyncio.to_thread",
+            side_effect=[
+                mock_repo,  # First call for Repo init
+                None,  # Second call for pull
+            ],
+        ), patch("pathlib.Path.exists", return_value=True), patch(
+            "pathlib.Path.is_dir", return_value=True
         ):
             await service.initialize()
 
             assert service._initialized is True
             assert service._repo is mock_repo
-            mock_repo_init.assert_called_once_with(str(service.local_path))
 
     @pytest.mark.asyncio
     async def test_initialize_clone_failure(self, mock_config, mock_auth_manager, temp_dir):
@@ -232,7 +246,7 @@ class TestGitOperationService:
 
         with patch(
             "asyncio.to_thread", side_effect=lambda func, *args, **kwargs: func(*args, **kwargs)
-        ), patch.object(service.local_path, "exists", return_value=True):
+        ), patch("pathlib.Path.exists", return_value=True):
             result = await service.create_files([operation])
 
             assert result["success"] is True

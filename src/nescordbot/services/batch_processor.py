@@ -232,7 +232,7 @@ class BatchProcessor:
 
         return {
             "initialized": self._initialized,
-            "processing_active": self._processing_task and not self._processing_task.done(),
+            "processing_active": bool(self._processing_task and not self._processing_task.done()),
             "queue_status": queue_status,
             "statistics": self._stats.copy(),
             "git_status": await self.git_operations.get_repository_status()
@@ -263,11 +263,13 @@ class BatchProcessor:
             if self.auth_manager:
                 await self.auth_manager.cleanup()
 
-            self._initialized = False
             logger.info("Batch processor cleanup completed")
 
         except Exception as e:
             logger.error(f"Error during batch processor cleanup: {e}")
+        finally:
+            # Always mark as not initialized
+            self._initialized = False
 
 
 # Enhanced PersistentQueue to work with GitOperationService
