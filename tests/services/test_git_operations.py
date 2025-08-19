@@ -332,7 +332,10 @@ class TestGitOperationService:
         # Mock repository
         mock_repo = MagicMock()
         mock_repo.working_dir = str(temp_dir)
-        mock_repo.index.diff.return_value = []  # No staged changes initially
+        # Mock staged changes to ensure commit_changes proceeds
+        mock_diff_item = MagicMock()
+        mock_diff_item.a_path = "test1.md"
+        mock_repo.index.diff.return_value = [mock_diff_item]
 
         mock_commit = MagicMock()
         mock_commit.hexsha = "abc123"

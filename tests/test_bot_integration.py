@@ -26,6 +26,9 @@ class TestBotDatabaseIntegration:
             speech_language = "ja-JP"
             log_level = "INFO"
             database_url = ":memory:"  # Use in-memory database for testing
+            github_token = None
+            github_repo_owner = None
+            github_repo_name = None
 
         class MockConfigManager:
             def __init__(self):
@@ -65,98 +68,108 @@ class TestBotDatabaseIntegration:
         """Test that bot initializes with database service."""
         bot = NescordBot()
 
-        # Check that database service is initialized
-        assert hasattr(bot, "database_service")
-        assert bot.database_service is not None
-        assert not bot.database_service.is_initialized  # Not yet initialized
-
-        # Cleanup
-        await bot.close()
+        try:
+            # Check that database service is initialized
+            assert hasattr(bot, "database_service")
+            assert bot.database_service is not None
+            assert not bot.database_service.is_initialized  # Not yet initialized
+        finally:
+            # Cleanup
+            await bot.close()
 
     async def test_bot_setup_hook_initializes_database(self, mock_config, mock_logger):
         """Test that setup_hook properly initializes database service."""
         bot = NescordBot()
 
-        # Run setup hook (without actually connecting to Discord)
-        await bot.setup_hook()
+        try:
+            # Run setup hook (without actually connecting to Discord)
+            await bot.setup_hook()
 
-        # Check that database is initialized
-        assert bot.database_service.is_initialized
+            # Check that database is initialized
+            assert bot.database_service.is_initialized
 
-        # Test database operations
-        await bot.database_service.set("test_key", "test_value")
-        result = await bot.database_service.get("test_key")
-        assert result == "test_value"
-
-        # Cleanup
-        await bot.close()
+            # Test database operations
+            await bot.database_service.set("test_key", "test_value")
+            result = await bot.database_service.get("test_key")
+            assert result == "test_value"
+        finally:
+            # Cleanup
+            await bot.close()
 
     async def test_bot_close_properly_closes_database(self, mock_config, mock_logger):
         """Test that bot.close() properly closes database service."""
         bot = NescordBot()
 
-        # Initialize database
-        await bot.setup_hook()
-        assert bot.database_service.is_initialized
+        try:
+            # Initialize database
+            await bot.setup_hook()
+            assert bot.database_service.is_initialized
 
-        # Close bot
-        await bot.close()
+            # Close bot
+            await bot.close()
 
-        # Check that database is closed
-        assert not bot.database_service.is_initialized
+            # Check that database is closed
+            assert not bot.database_service.is_initialized
+        except Exception:
+            # Ensure cleanup even if test fails
+            await bot.close()
+            raise
 
     async def test_database_persistence_across_operations(self, mock_config, mock_logger):
         """Test that database maintains data across multiple operations."""
         bot = NescordBot()
-        await bot.setup_hook()
 
-        # Store configuration data
-        config_data = {
-            "bot_name": "NescordBot",
-            "version": "1.0.0",
-            "features": ["voice", "database", "commands"],
-        }
+        try:
+            await bot.setup_hook()
 
-        await bot.database_service.set_json("bot:config", config_data)
+            # Store configuration data
+            config_data = {
+                "bot_name": "NescordBot",
+                "version": "1.0.0",
+                "features": ["voice", "database", "commands"],
+            }
 
-        # Store user preferences
-        user_prefs = {"user_id": "123456789", "theme": "dark", "notifications": True}
+            await bot.database_service.set_json("bot:config", config_data)
 
-        await bot.database_service.set_json("user:123456789:prefs", user_prefs)
+            # Store user preferences
+            user_prefs = {"user_id": "123456789", "theme": "dark", "notifications": True}
 
-        # Verify data persistence
-        retrieved_config = await bot.database_service.get_json("bot:config")
-        assert retrieved_config == config_data
+            await bot.database_service.set_json("user:123456789:prefs", user_prefs)
 
-        retrieved_prefs = await bot.database_service.get_json("user:123456789:prefs")
-        assert retrieved_prefs == user_prefs
+            # Verify data persistence
+            retrieved_config = await bot.database_service.get_json("bot:config")
+            assert retrieved_config == config_data
 
-        # Test key listing
-        keys = await bot.database_service.keys("*")
-        assert "bot:config" in keys
-        assert "user:123456789:prefs" in keys
+            retrieved_prefs = await bot.database_service.get_json("user:123456789:prefs")
+            assert retrieved_prefs == user_prefs
 
-        # Cleanup
-        await bot.close()
+            # Test key listing
+            keys = await bot.database_service.keys("*")
+            assert "bot:config" in keys
+            assert "user:123456789:prefs" in keys
+        finally:
+            # Cleanup
+            await bot.close()
 
     async def test_database_error_handling(self, mock_config, mock_logger):
         """Test database error handling scenarios."""
         bot = NescordBot()
 
-        # Try to use database before initialization
-        with pytest.raises(RuntimeError, match="Database not initialized"):
-            await bot.database_service.get("test_key")
+        try:
+            # Try to use database before initialization
+            with pytest.raises(RuntimeError, match="Database not initialized"):
+                await bot.database_service.get("test_key")
 
-        # Initialize database
-        await bot.setup_hook()
+            # Initialize database
+            await bot.setup_hook()
 
-        # Test invalid JSON handling
-        await bot.database_service.set("invalid_json", "not a json string")
-        result = await bot.database_service.get_json("invalid_json")
-        assert result is None  # Should return None for invalid JSON
-
-        # Cleanup
-        await bot.close()
+            # Test invalid JSON handling
+            await bot.database_service.set("invalid_json", "not a json string")
+            result = await bot.database_service.get_json("invalid_json")
+            assert result is None  # Should return None for invalid JSON
+        finally:
+            # Cleanup
+            await bot.close()
 
 
 @pytest.mark.integration
@@ -175,6 +188,9 @@ class TestBotDatabaseRealFile:
             speech_language = "ja-JP"
             log_level = "INFO"
             database_url = db_path
+            github_token = None
+            github_repo_owner = None
+            github_repo_name = None
 
         class MockConfigManager:
             def __init__(self):
@@ -214,27 +230,35 @@ class TestBotDatabaseRealFile:
 
     async def test_database_file_persistence(self, temp_db_config, mock_logger):
         """Test that data persists to actual database file."""
-        # First bot instance
-        bot1 = NescordBot()
-        await bot1.setup_hook()
+        bot1 = None
+        bot2 = None
 
-        # Store some data
-        await bot1.database_service.set("persistent_key", "persistent_value")
-        await bot1.database_service.set_json("config", {"version": "1.0"})
+        try:
+            # First bot instance
+            bot1 = NescordBot()
+            await bot1.setup_hook()
 
-        # Close first instance
-        await bot1.close()
+            # Store some data
+            await bot1.database_service.set("persistent_key", "persistent_value")
+            await bot1.database_service.set_json("config", {"version": "1.0"})
 
-        # Create second bot instance with same database
-        bot2 = NescordBot()
-        await bot2.setup_hook()
+            # Close first instance
+            await bot1.close()
+            bot1 = None
 
-        # Verify data persisted
-        value = await bot2.database_service.get("persistent_key")
-        assert value == "persistent_value"
+            # Create second bot instance with same database
+            bot2 = NescordBot()
+            await bot2.setup_hook()
 
-        config = await bot2.database_service.get_json("config")
-        assert config == {"version": "1.0"}
+            # Verify data persisted
+            value = await bot2.database_service.get("persistent_key")
+            assert value == "persistent_value"
 
-        # Cleanup
-        await bot2.close()
+            config = await bot2.database_service.get_json("config")
+            assert config == {"version": "1.0"}
+        finally:
+            # Cleanup both bots if they exist
+            if bot1:
+                await bot1.close()
+            if bot2:
+                await bot2.close()
