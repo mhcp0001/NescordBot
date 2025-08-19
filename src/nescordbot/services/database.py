@@ -133,9 +133,17 @@ class DatabaseService(IDataStore):
         Initialize the database service.
 
         Args:
-            db_path: Path to the SQLite database file, or ":memory:" for in-memory
+            db_path: Path to the SQLite database file, SQLite URL, or ":memory:" for in-memory
         """
-        self.db_path = db_path
+        # Parse SQLite URL if provided
+        if db_path.startswith("sqlite:///"):
+            # Extract path from sqlite:///path/to/file.db
+            self.db_path = db_path[10:]  # Remove "sqlite:///"
+        elif db_path.startswith("sqlite://"):
+            # Handle sqlite://path (relative path)
+            self.db_path = db_path[9:]  # Remove "sqlite://"
+        else:
+            self.db_path = db_path
         self.connection: Optional[aiosqlite.Connection] = None
         self._lock = asyncio.Lock()
         self._initialized = False
