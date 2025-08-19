@@ -37,7 +37,7 @@ jobs:
 
       - name: Validate commit messages
         run: |
-          echo "🔍 Checking commit messages for issue references..."
+          echo "🔍 Checking commit messages for issue references and format..."
 
           # Get all commits in this PR (excluding merge commits)
           commits=$(git log --no-merges --format="%H %s" origin/${{ github.base_ref }}..HEAD)
@@ -60,31 +60,50 @@ jobs:
 
               echo "Checking: $commit_msg"
 
-              # Check for (refs #number) pattern
-              if ! echo "$commit_msg" | grep -qE '\(refs #[0-9]+\)'; then
-                echo "❌ Commit missing issue reference: $commit_msg"
+              # Check for conventional commit format with issue reference
+              if ! echo "$commit_msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore)(\([a-zA-Z0-9_-]+\))?: .+ \(refs #[0-9]+\)$'; then
+                echo "❌ Commit message format error: $commit_msg"
                 echo "   Required format: type(scope): description (refs #issue-number)"
+                echo "   ・Title must be ≤72 characters"
+                echo "   ・Must include issue reference (refs #number)"
+                echo "   ・Must follow conventional commits format"
                 error_found=true
               else
-                echo "✅ Valid format: $commit_msg"
+                # Check commit message length
+                msg_length=${#commit_msg}
+                if [ $msg_length -gt 72 ]; then
+                  echo "⚠️  Commit message too long ($msg_length chars): $commit_msg"
+                  echo "   Consider shortening to ≤72 characters"
+                  error_found=true
+                else
+                  echo "✅ Valid format: $commit_msg"
+                fi
               fi
             fi
           done <<< "$commits"
 
           if [ "$error_found" = true ]; then
             echo ""
-            echo "❌ One or more commits are missing issue references."
+            echo "❌ One or more commits have formatting issues."
             echo "All commits must follow the format: type(scope): description (refs #issue-number)"
+            echo "Requirements:"
+            echo "  ・type: feat, fix, docs, style, refactor, test, chore"
+            echo "  ・scope: optional module name (e.g., github, voice, admin)"
+            echo "  ・description: Japanese description of changes"
+            echo "  ・refs: mandatory issue reference (refs #number)"
+            echo "  ・length: ≤72 characters total"
+            echo ""
             echo "Examples:"
             echo "  feat(github): GitHub API統合を実装 (refs #51)"
             echo "  fix(voice): 音声処理を修正 (refs #52)"
+            echo "  docs: README.mdを更新 (refs #53)"
             echo ""
             echo "See CLAUDE.md for complete GitHub management rules."
             exit 1
           fi
 
           echo ""
-          echo "✅ All commit messages contain proper issue references"
+          echo "✅ All commit messages follow proper format and reference issues"
 
       - name: Check PR title format
         uses: actions/github-script@v7
