@@ -94,6 +94,8 @@ markers = [
     "integration: marks tests as integration tests",
     "network: marks tests that require network access"
 ]
+# Additional CI stability options
+addopts = "--tb=short --strict-markers -v"
 
 [tool.flake8]
 max-line-length = 200
