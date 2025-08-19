@@ -120,7 +120,8 @@ class TestBotRunner:
             del os.environ["DISCORD_TOKEN"]
 
         try:
-            with patch("builtins.print"):  # Suppress help output
+            # Also mock the .env file loading to ensure failure
+            with patch("builtins.print"), patch("nescordbot.config.load_dotenv"):
                 result = runner.validate_environment()
 
             assert result is False
@@ -194,19 +195,31 @@ class TestBotRunner:
         runner.setup_logging()
 
         with patch("nescordbot.bot.main", new_callable=AsyncMock) as mock_bot_main:
-            # Make bot_main run indefinitely
-            mock_bot_main.return_value = None
+            # Make bot_main run indefinitely but with a proper async wait
+            async def mock_main():
+                """Mock bot main that waits for shutdown signal."""
+                while not runner.shutdown_event.is_set():
+                    await asyncio.sleep(0.01)
+                return None
 
-            # Create a task to simulate the bot run
-            async def simulate_run():
-                # Trigger shutdown after a short delay
-                await asyncio.sleep(0.1)
+            mock_bot_main.side_effect = mock_main
+
+            # Create shutdown task
+            async def trigger_shutdown():
+                await asyncio.sleep(0.05)  # Short delay
                 await runner._shutdown()
-                return await runner.run_bot()
 
-            result = await simulate_run()
-
-            assert result == 0
+            # Run with timeout protection
+            shutdown_task = asyncio.create_task(trigger_shutdown())
+            try:
+                result = await asyncio.wait_for(runner.run_bot(), timeout=1.0)
+                assert result == 0
+            except asyncio.TimeoutError:
+                await runner._shutdown()
+                pytest.fail("Bot run timed out")
+            finally:
+                if not shutdown_task.done():
+                    shutdown_task.cancel()
 
     @pytest.mark.asyncio
     async def test_run_bot_exception(self):
@@ -370,20 +383,31 @@ class TestRunnerIntegration:
             # Make the bot main return quickly
             mock_bot_main.return_value = None
 
-            async def shutdown_after_delay():
-                """Trigger shutdown after initialization."""
-                await asyncio.sleep(0.1)
+            # Create the shutdown task before starting
+            async def trigger_shutdown():
+                """Trigger shutdown after a very short delay."""
+                await asyncio.sleep(0.05)  # Shorter delay
                 await runner._shutdown()
 
-            # Use gather to manage both tasks under pytest-asyncio control
-            results = await asyncio.gather(
-                runner.start(), shutdown_after_delay(), return_exceptions=True
-            )
+            # Start the shutdown task before calling runner.start()
+            shutdown_task = asyncio.create_task(trigger_shutdown())
 
-            # Extract the result from start() - should be first result if no exception
-            result = results[0] if not isinstance(results[0], Exception) else 1
-
-            assert result == 0
+            # Run the startup with a timeout to prevent hanging
+            try:
+                result = await asyncio.wait_for(runner.start(), timeout=2.0)
+                assert result == 0
+            except asyncio.TimeoutError:
+                # If timeout, ensure shutdown and fail gracefully
+                await runner._shutdown()
+                pytest.fail("Startup sequence timed out")
+            finally:
+                # Clean up the shutdown task
+                if not shutdown_task.done():
+                    shutdown_task.cancel()
+                    try:
+                        await shutdown_task
+                    except asyncio.CancelledError:
+                        pass
 
     def test_environment_masking(self):
         """Test that sensitive information is properly masked in logs."""
