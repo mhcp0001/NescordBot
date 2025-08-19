@@ -5,8 +5,22 @@ This package contains service classes that provide business logic
 and infrastructure operations for the bot.
 """
 
+from .batch_processor import BatchProcessor, GitHubIntegratedQueue
 from .database import DatabaseService, IDataStore
+from .git_operations import FileOperation, GitOperationService
 from .github import GitHubService
+from .github_auth import GitHubAuthManager
 from .persistent_queue import FileRequest, PersistentQueue
 
-__all__ = ["DatabaseService", "IDataStore", "GitHubService", "PersistentQueue", "FileRequest"]
+__all__ = [
+    "DatabaseService",
+    "IDataStore",
+    "GitHubService",
+    "PersistentQueue",
+    "FileRequest",
+    "GitHubAuthManager",
+    "GitOperationService",
+    "FileOperation",
+    "BatchProcessor",
+    "GitHubIntegratedQueue",
+]
