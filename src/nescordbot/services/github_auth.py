@@ -141,7 +141,9 @@ class GitHubAppAuthProvider(IAuthProvider):
         try:
             client = await self.get_client()
             # Get installation to verify app auth is valid
-            installation = client.get_app().get_installation(int(self.installation_id))
+            installation = client.get_app().get_installation(
+                int(self.installation_id)
+            )  # type: ignore[attr-defined]
             return installation is not None
         except Exception as e:
             logger.debug(f"GitHub App validation failed: {e}")
@@ -284,16 +286,16 @@ class GitHubAuthManager:
 
             return {
                 "core": {
-                    "limit": rate_limit.core.limit,
-                    "remaining": rate_limit.core.remaining,
-                    "reset": rate_limit.core.reset,
-                    "used": rate_limit.core.used,
+                    "limit": rate_limit.core.limit,  # type: ignore[attr-defined]
+                    "remaining": rate_limit.core.remaining,  # type: ignore[attr-defined]
+                    "reset": rate_limit.core.reset,  # type: ignore[attr-defined]
+                    "used": rate_limit.core.used,  # type: ignore[attr-defined]
                 },
                 "search": {
-                    "limit": rate_limit.search.limit,
-                    "remaining": rate_limit.search.remaining,
-                    "reset": rate_limit.search.reset,
-                    "used": rate_limit.search.used,
+                    "limit": rate_limit.search.limit,  # type: ignore[attr-defined]
+                    "remaining": rate_limit.search.remaining,  # type: ignore[attr-defined]
+                    "reset": rate_limit.search.reset,  # type: ignore[attr-defined]
+                    "used": rate_limit.search.used,  # type: ignore[attr-defined]
                 },
             }
         except Exception as e:
