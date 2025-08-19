@@ -344,8 +344,16 @@ class TestGitOperationService:
         await git_service.add_to_batch("add", "test1.md", "content1")
         await git_service.add_to_batch("add", "test2.md", "content2")
 
-        # Mock file operations
-        with patch("builtins.open", create=True):
+        # Mock file operations and commit_changes method
+        with patch("builtins.open", create=True), patch.object(
+            git_service, "commit_changes"
+        ) as mock_commit:
+            # Mock commit_changes return value
+            mock_commit_result = GitOperationResult(
+                success=True, message="Committed", commit_hash="abc123"
+            )
+            mock_commit.return_value = mock_commit_result
+
             result = await git_service.process_batch("Batch commit")
 
         assert result.success
