@@ -120,7 +120,8 @@ class TestBotRunner:
             del os.environ["DISCORD_TOKEN"]
 
         try:
-            with patch("builtins.print"):  # Suppress help output
+            # Also mock the .env file loading to ensure failure
+            with patch("builtins.print"), patch("nescordbot.config.load_dotenv"):
                 result = runner.validate_environment()
 
             assert result is False

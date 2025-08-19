@@ -26,6 +26,9 @@ class TestBotDatabaseIntegration:
             speech_language = "ja-JP"
             log_level = "INFO"
             database_url = ":memory:"  # Use in-memory database for testing
+            github_token = None
+            github_repo_owner = None
+            github_repo_name = None
 
         class MockConfigManager:
             def __init__(self):
@@ -175,6 +178,9 @@ class TestBotDatabaseRealFile:
             speech_language = "ja-JP"
             log_level = "INFO"
             database_url = db_path
+            github_token = None
+            github_repo_owner = None
+            github_repo_name = None
 
         class MockConfigManager:
             def __init__(self):

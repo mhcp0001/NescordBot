@@ -39,8 +39,8 @@ jobs:
         run: |
           echo "🔍 Checking commit messages for issue references..."
 
-          # Get all commits in this PR
-          commits=$(git log --format="%H %s" origin/${{ github.base_ref }}..HEAD)
+          # Get all commits in this PR (excluding merge commits)
+          commits=$(git log --no-merges --format="%H %s" origin/${{ github.base_ref }}..HEAD)
 
           if [ -z "$commits" ]; then
             echo "❌ No commits found in PR"
