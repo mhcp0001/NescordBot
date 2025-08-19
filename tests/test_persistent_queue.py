@@ -259,15 +259,17 @@ class TestPersistentQueue:
         # Manually insert a processing task that's old
         async with temp_db.get_connection() as conn:
             # Use SQLite datetime format that's compatible with datetime('now') comparison
+            test_json = (
+                '{"filename": "test.md", "content": "test", "directory": "notes", '
+                '"metadata": {}, "created_at": "2024-01-01T00:00:00", "priority": 0}'
+            )
             await conn.execute(
                 """
                 INSERT INTO obsidian_file_queue
                 (status, updated_at, file_request_json, priority)
-                VALUES ('processing', datetime('now', '-10 minutes'),
-                        '{"filename": "test.md", "content": "test", "directory": "notes", '
-                        '"metadata": {}, "created_at": "2024-01-01T00:00:00", "priority": 0}',
-                        0)
-            """
+                VALUES ('processing', datetime('now', '-10 minutes'), ?, 0)
+            """,
+                (test_json,),
             )
             await conn.commit()
 
