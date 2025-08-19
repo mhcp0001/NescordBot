@@ -385,3 +385,50 @@ class DatabaseService(IDataStore):
             except Exception as e:
                 logger.error(f"Failed to get database stats: {e}")
                 raise
+
+    def get_connection(self):
+        """Get a context manager for the database connection."""
+        return DatabaseConnectionManager(self)
+
+
+class DatabaseConnectionManager:
+    """Context manager for database connections."""
+
+    def __init__(self, db_service: DatabaseService):
+        self.db_service = db_service
+
+    async def __aenter__(self):
+        if not self.db_service.is_initialized or self.db_service.connection is None:
+            raise RuntimeError("Database not initialized")
+        return DatabaseConnectionProxy(self.db_service)
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+class DatabaseConnectionProxy:
+    """Proxy for database connection with proper locking."""
+
+    def __init__(self, db_service: DatabaseService):
+        self.db_service = db_service
+
+    async def execute(self, query: str, parameters=None):
+        """Execute a query with proper locking."""
+        if self.db_service.connection is None:
+            raise RuntimeError("Database connection is None")
+        async with self.db_service._lock:
+            return await self.db_service.connection.execute(query, parameters or [])
+
+    async def executescript(self, script: str):
+        """Execute a script with proper locking."""
+        if self.db_service.connection is None:
+            raise RuntimeError("Database connection is None")
+        async with self.db_service._lock:
+            await self.db_service.connection.executescript(script)
+
+    async def commit(self):
+        """Commit transaction with proper locking."""
+        if self.db_service.connection is None:
+            raise RuntimeError("Database connection is None")
+        async with self.db_service._lock:
+            await self.db_service.connection.commit()
