@@ -241,16 +241,22 @@ class TestGitHubAuthManager:
         """Test successful client retrieval."""
         auth_manager = GitHubAuthManager(pat_config)
 
-        # Mock provider and client
+        # Mock provider and auth
+        from github.Auth import Auth
+
+        mock_auth = MagicMock(spec=Auth)
         mock_client = MagicMock()
         mock_provider = AsyncMock()
         mock_provider.is_valid.return_value = True
-        mock_provider.get_client.return_value = mock_client
+        mock_provider.get_auth.return_value = mock_auth
 
         auth_manager._provider = mock_provider
 
-        client = await auth_manager.get_client()
-        assert client is mock_client
+        with patch("src.nescordbot.services.github_auth.Github") as mock_github:
+            mock_github.return_value = mock_client
+            client = await auth_manager.get_client()
+            assert client is mock_client
+            mock_github.assert_called_once_with(auth=mock_auth)
 
     @pytest.mark.asyncio
     async def test_get_client_auto_initialize(self, pat_config):
@@ -260,19 +266,25 @@ class TestGitHubAuthManager:
         with patch.object(auth_manager, "initialize") as mock_init:
             mock_init.return_value = None
 
-            # Mock provider and client
+            # Mock provider and auth
+            from github.Auth import Auth
+
+            mock_auth = MagicMock(spec=Auth)
             mock_client = MagicMock()
             mock_provider = AsyncMock()
-            mock_provider.get_client.return_value = mock_client
+            mock_provider.get_auth.return_value = mock_auth
 
             # Set up mocks so initialize() gets called
             auth_manager._provider = None  # Force initialization
             mock_init.side_effect = lambda: setattr(auth_manager, "_provider", mock_provider)
 
-            client = await auth_manager.get_client()
+            with patch("src.nescordbot.services.github_auth.Github") as mock_github:
+                mock_github.return_value = mock_client
+                client = await auth_manager.get_client()
 
-            mock_init.assert_called_once()
-            assert client is mock_client
+                mock_init.assert_called_once()
+                assert client is mock_client
+                mock_github.assert_called_once_with(auth=mock_auth)
 
     @pytest.mark.asyncio
     async def test_verify_permissions_with_repo_path(self, pat_config):
@@ -330,15 +342,14 @@ class TestGitHubAuthManager:
         mock_client = MagicMock()
         mock_client.get_rate_limit.return_value = mock_rate_limit
 
-        mock_provider = AsyncMock()
-        mock_provider.get_client.return_value = mock_client
-        auth_manager._provider = mock_provider
+        # Mock get_client to return mock_client
+        with patch.object(auth_manager, "get_client") as mock_get_client:
+            mock_get_client.return_value = mock_client
+            rate_info = await auth_manager.get_rate_limit_info()
 
-        rate_info = await auth_manager.get_rate_limit_info()
-
-        assert rate_info["core"]["limit"] == 5000
-        assert rate_info["core"]["remaining"] == 4500
-        assert rate_info["search"]["limit"] == 30
+            assert rate_info["core"]["limit"] == 5000
+            assert rate_info["core"]["remaining"] == 4500
+            assert rate_info["search"]["limit"] == 30
 
     @pytest.mark.asyncio
     async def test_get_rate_limit_info_error(self, pat_config):

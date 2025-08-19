@@ -133,7 +133,12 @@ class TestBatchProcessor:
         assert file_request.content == "# Test Content"
         assert file_request.directory == "notes"
         assert file_request.priority == 1
-        assert call_args[1] == "test-key"  # idempotency_key
+        # Check kwargs for idempotency_key
+        if hasattr(call_args, "kwargs"):
+            assert call_args.kwargs.get("idempotency_key") == "test-key"
+        else:
+            kwargs = call_args[1] if len(call_args) > 1 else {}
+            assert kwargs.get("idempotency_key") == "test-key"
 
     @pytest.mark.asyncio
     async def test_enqueue_auto_initialize(self, batch_processor):
