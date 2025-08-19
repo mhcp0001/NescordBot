@@ -141,9 +141,10 @@ class GitHubAppAuthProvider(IAuthProvider):
         try:
             client = await self.get_client()
             # Get installation to verify app auth is valid
-            installation = client.get_app().get_installation(
+            app = client.get_app()
+            installation = app.get_installation(  # type: ignore[attr-defined]
                 int(self.installation_id)
-            )  # type: ignore[attr-defined]
+            )
             return installation is not None
         except Exception as e:
             logger.debug(f"GitHub App validation failed: {e}")
