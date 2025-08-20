@@ -72,12 +72,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Deploy to Railway
-      uses: railway/railway-action@v1
+    - name: Setup Railway CLI
+      uses: railway/cli@v2
       with:
-        api-key: ${{ secrets.RAILWAY_TOKEN }}
-        project-id: ${{ secrets.RAILWAY_PROJECT_ID }}
-        service-id: ${{ secrets.RAILWAY_SERVICE_ID }}
+        railway_token: ${{ secrets.RAILWAY_TOKEN }}
+
+    - name: Deploy to Railway
+      run: railway up --service ${{ secrets.RAILWAY_SERVICE_ID }}
+      env:
+        RAILWAY_PROJECT_ID: ${{ secrets.RAILWAY_PROJECT_ID }}
 
     - name: Verify deployment
       run: |
