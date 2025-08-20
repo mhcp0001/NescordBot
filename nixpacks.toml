@@ -1,5 +1,5 @@
 [phases.setup]
-nixPkgs = ['python311', 'python311Packages.pip', 'python311Packages.poetry', 'ffmpeg']
+nixPkgs = ['python311', 'poetry', 'ffmpeg']
 
 [phases.install]
 cmds = [
