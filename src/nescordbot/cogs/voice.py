@@ -271,4 +271,5 @@ class TranscriptionView(discord.ui.View):
 
 async def setup(bot):
     """Cogをセットアップ"""
-    await bot.add_cog(Voice(bot))
+    obsidian_service = getattr(bot, "obsidian_service", None)
+    await bot.add_cog(Voice(bot, obsidian_service))
