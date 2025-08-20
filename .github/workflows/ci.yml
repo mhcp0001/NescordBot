@@ -140,45 +140,6 @@ jobs:
           bandit-report.json
           safety-report.json
 
-  build:
-    runs-on: ubuntu-latest
-    needs: [test, security]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.11"
-
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: latest
-
-    - name: Install dependencies
-      run: poetry install --no-interaction
-
-    - name: Build package
-      run: poetry build
-
-    - name: Generate requirements.txt for deployment
-      run: |
-        poetry self add poetry-plugin-export
-        poetry export -f requirements.txt --output requirements.txt --without-hashes
-        poetry export -f requirements.txt --output requirements-dev.txt --with dev --without-hashes
-
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-artifacts
-        path: |
-          dist/
-          requirements.txt
-          requirements-dev.txt
 
   integration-test:
     runs-on: ubuntu-latest
