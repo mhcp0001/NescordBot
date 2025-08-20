@@ -152,7 +152,8 @@
       "Bash(rm:*)",
       "Bash(gh pr edit:*)",
       "Bash(gh pr merge:*)",
-      "mcp__serena__write_memory"
+      "mcp__serena__write_memory",
+      "WebSearch"
     ],
     "deny": [
       "Bash(> /etc/*)",
