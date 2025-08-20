@@ -15,7 +15,15 @@ from discord.ext import commands
 
 from .config import get_config_manager
 from .logger import get_logger
-from .services import DatabaseService, GitHubService
+from .security import SecurityValidator
+from .services import (
+    BatchProcessor,
+    DatabaseService,
+    GitHubAuthManager,
+    GitHubService,
+    GitOperationService,
+    ObsidianGitHubService,
+)
 
 
 class NescordBot(commands.Bot):
@@ -68,6 +76,9 @@ class NescordBot(commands.Bot):
         else:
             self.logger.info("GitHub integration disabled (missing configuration)")
 
+        # Initialize ObsidianGitHub integration services
+        self._init_obsidian_services()
+
         self.logger.info("NescordBot instance created")
 
     async def setup_hook(self) -> None:
@@ -88,6 +99,9 @@ class NescordBot(commands.Bot):
             if self.github_service:
                 await self.github_service.start()
                 self.logger.info("GitHub service started")
+
+            # Initialize ObsidianGitHub services if available
+            await self._init_obsidian_services_async()
 
             # Load cogs
             await self._load_cogs()
@@ -294,8 +308,78 @@ class NescordBot(commands.Bot):
             await self.github_service.stop()
             self.logger.info("GitHub service stopped")
 
+        # Stop ObsidianGitHub services
+        if hasattr(self, "obsidian_service") and self.obsidian_service:
+            await self.obsidian_service.shutdown()
+            self.logger.info("ObsidianGitHub service stopped")
+
         await super().close()
         self.logger.info("Bot shutdown complete")
+
+    def _init_obsidian_services(self) -> None:
+        """Initialize ObsidianGitHub integration services (synchronous part)."""
+        self.obsidian_service: Optional[ObsidianGitHubService] = None
+
+        # Check if ObsidianGitHub integration should be enabled
+        obsidian_enabled = getattr(self.config, "github_obsidian_enabled", False)
+        if not obsidian_enabled:
+            self.logger.info("ObsidianGitHub integration disabled (github_obsidian_enabled=False)")
+            return
+
+        # Check required configuration
+        required_config = ["github_token", "github_repo_owner", "github_repo_name"]
+
+        missing_config = [key for key in required_config if not getattr(self.config, key, None)]
+        if missing_config:
+            self.logger.warning(
+                f"ObsidianGitHub integration disabled (missing config: {missing_config})"
+            )
+            return
+
+        try:
+            # Initialize SecurityValidator
+            self.security_validator = SecurityValidator()
+
+            # Initialize GitHub Auth Manager
+            self.github_auth_manager = GitHubAuthManager(self.config)
+
+            # Initialize Git Operations Service
+            self.git_operations = GitOperationService(self.config, self.github_auth_manager)
+
+            # Initialize Batch Processor
+            self.batch_processor = BatchProcessor(
+                self.config, self.database_service, self.github_auth_manager, self.git_operations
+            )
+
+            # Initialize ObsidianGitHub Service
+            self.obsidian_service = ObsidianGitHubService(
+                self.config, self.batch_processor, self.security_validator
+            )
+
+            self.logger.info("ObsidianGitHub services initialized (async initialization pending)")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize ObsidianGitHub services: {e}")
+            self.obsidian_service = None
+
+    async def _init_obsidian_services_async(self) -> None:
+        """Initialize ObsidianGitHub integration services (asynchronous part)."""
+        if not self.obsidian_service:
+            return
+
+        try:
+            # Initialize services in order
+            await self.github_auth_manager.initialize()
+            await self.git_operations.initialize()
+            await self.batch_processor.initialize()
+            await self.obsidian_service.initialize()
+
+            self.logger.info("ObsidianGitHub services fully initialized")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize ObsidianGitHub services async: {e}")
+            # Clean up partially initialized services
+            self.obsidian_service = None
 
 
 async def main() -> None:

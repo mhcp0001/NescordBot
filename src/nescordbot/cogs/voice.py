@@ -2,7 +2,7 @@ import asyncio
 import io
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import discord
 import openai
@@ -17,7 +17,7 @@ class Voice(commands.Cog):
 
     def __init__(self, bot, obsidian_service: Optional[ObsidianGitHubService] = None):
         self.bot = bot
-        self.openai_client = None
+        self.openai_client: Optional[Any] = None
         self.obsidian_service = obsidian_service
         self.setup_openai()
 
@@ -271,4 +271,5 @@ class TranscriptionView(discord.ui.View):
 
 async def setup(bot):
     """Cogをセットアップ"""
-    await bot.add_cog(Voice(bot))
+    obsidian_service = getattr(bot, "obsidian_service", None)
+    await bot.add_cog(Voice(bot, obsidian_service))
