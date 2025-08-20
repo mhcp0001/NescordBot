@@ -2,20 +2,23 @@ import asyncio
 import io
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import discord
 import openai
 from discord import app_commands
 from discord.ext import commands
 
+from ..services import ObsidianGitHubService
+
 
 class Voice(commands.Cog):
     """音声処理関連のコマンドを管理するCog"""
 
-    def __init__(self, bot):
+    def __init__(self, bot, obsidian_service: Optional[ObsidianGitHubService] = None):
         self.bot = bot
-        self.openai_client = None
+        self.openai_client: Optional[Any] = None
+        self.obsidian_service = obsidian_service
         self.setup_openai()
 
     def setup_openai(self):
@@ -162,7 +165,11 @@ class Voice(commands.Cog):
                     await processing_msg.edit(content=None, embed=embed)
 
                 # Obsidianへの保存ボタンを追加
-                view = TranscriptionView(transcription=processed_text, summary=ai_result["summary"])
+                view = TranscriptionView(
+                    transcription=processed_text,
+                    summary=ai_result["summary"],
+                    obsidian_service=self.obsidian_service,
+                )
                 await message.reply(view=view)
 
             else:
@@ -184,15 +191,70 @@ class Voice(commands.Cog):
 class TranscriptionView(discord.ui.View):
     """文字起こし結果のインタラクティブビュー"""
 
-    def __init__(self, transcription: str, summary: str):
+    def __init__(
+        self,
+        transcription: str,
+        summary: str,
+        obsidian_service: Optional[ObsidianGitHubService] = None,
+    ):
         super().__init__(timeout=300)  # 5分でタイムアウト
         self.transcription = transcription
         self.summary = summary
+        self.obsidian_service = obsidian_service
 
     @discord.ui.button(label="📝 Obsidianに保存", style=discord.ButtonStyle.primary)
     async def save_to_obsidian(self, interaction: discord.Interaction, button: discord.ui.Button):
-        """Obsidianに保存（実装予定）"""
-        await interaction.response.send_message("Obsidian連携機能は現在開発中です。", ephemeral=True)
+        """Obsidianに保存"""
+        if not self.obsidian_service:
+            await interaction.response.send_message("❌ Obsidian統合サービスが設定されていません。", ephemeral=True)
+            return
+
+        try:
+            await interaction.response.defer(ephemeral=True)
+
+            # ファイル名を生成（タイムスタンプ + 要約の一部）
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_summary = "".join(c for c in self.summary[:20] if c.isalnum() or c in "_ -")
+            filename = f"voice_transcription_{timestamp}_{safe_summary}.md"
+
+            # Obsidian形式のマークダウンを作成
+            content = f"""# 音声文字起こし
+
+## 要約
+{self.summary}
+
+## 全文
+{self.transcription}
+
+---
+作成日時: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+
+            # Obsidianサービスを使って保存
+            request_id = await self.obsidian_service.save_to_obsidian(
+                filename=filename,
+                content=content,
+                directory="voice_transcriptions",
+                metadata={
+                    "type": "voice_transcription",
+                    "created_at": datetime.now().isoformat(),
+                    "discord_user": str(interaction.user),
+                },
+            )
+
+            await interaction.followup.send(
+                f"✅ Obsidianに保存しました！\n"
+                f"📁 ファイル: `{filename}`\n"
+                f"🆔 リクエストID: `{request_id}`\n"
+                f"📊 処理状況は `/obsidian status {request_id}` で確認できます。",
+                ephemeral=True,
+            )
+
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).error(f"Obsidian保存エラー: {e}")
+            await interaction.followup.send(f"❌ 保存中にエラーが発生しました: {str(e)}", ephemeral=True)
 
     @discord.ui.button(label="🐦 Xに投稿", style=discord.ButtonStyle.secondary)
     async def post_to_twitter(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -209,4 +271,5 @@ class TranscriptionView(discord.ui.View):
 
 async def setup(bot):
     """Cogをセットアップ"""
-    await bot.add_cog(Voice(bot))
+    obsidian_service = getattr(bot, "obsidian_service", None)
+    await bot.add_cog(Voice(bot, obsidian_service))
