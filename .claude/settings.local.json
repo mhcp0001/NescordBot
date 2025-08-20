@@ -120,7 +120,9 @@
       "Bash(poetry run isort:*)",
       "Bash(git add:*)",
       "WebFetch(domain:github.com)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(gh pr edit:*)",
+      "Bash(gh pr merge:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
