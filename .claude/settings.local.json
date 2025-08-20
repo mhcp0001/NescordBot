@@ -153,7 +153,9 @@
       "Bash(gh pr edit:*)",
       "Bash(gh pr merge:*)",
       "mcp__serena__write_memory",
-      "WebSearch"
+      "WebSearch",
+      "Bash(poetry check:*)",
+      "Bash(poetry run python:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
