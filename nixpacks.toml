@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = ['python311', 'python311Packages.pip', 'python311Packages.setuptools']
+
+[phases.install]
+cmds = [
+  'python3 -m pip install --upgrade pip setuptools wheel',
+  'python3 -m pip install poetry',
+  'poetry install --only main --no-interaction --no-ansi'
+]
+
+[variables]
+PYTHONPATH = '/app:/app/src'
+PYTHON_VERSION = '3.11'
+
+[start]
+cmd = 'python3 start.py'
