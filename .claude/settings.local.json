@@ -119,7 +119,8 @@
       "Bash(poetry run mypy:*)",
       "Bash(poetry run isort:*)",
       "Bash(git add:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(rm:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
