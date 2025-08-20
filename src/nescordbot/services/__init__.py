@@ -5,11 +5,13 @@ This package contains service classes that provide business logic
 and infrastructure operations for the bot.
 """
 
+from ..security import SecurityValidator
 from .batch_processor import BatchProcessor, GitHubIntegratedQueue
 from .database import DatabaseService, IDataStore
 from .git_operations import FileOperation, GitOperationService
 from .github import GitHubService
 from .github_auth import GitHubAuthManager
+from .obsidian_github import ObsidianGitHubService, ObsidianSyncStatus
 from .persistent_queue import FileRequest, PersistentQueue
 
 __all__ = [
@@ -23,4 +25,7 @@ __all__ = [
     "FileOperation",
     "BatchProcessor",
     "GitHubIntegratedQueue",
+    "ObsidianGitHubService",
+    "ObsidianSyncStatus",
+    "SecurityValidator",
 ]
