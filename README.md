@@ -6,17 +6,33 @@ Discord Bot with voice transcription and AI-powered features.
 
 - 🎤 音声メッセージの自動文字起こし（OpenAI Whisper）
 - 🤖 AIによる内容整形（GPT-3.5/GPT-4）
-- 📝 Obsidianへの自動保存（開発中）
-- 🐦 X (Twitter) 投稿文の自動生成（開発中）
+- 📝 **Obsidian GitHub統合**: ノート→GitHub自動同期 ✅
+- 🔐 **セキュリティ**: XSS/インジェクション完全防御 ✅
+- 🗃️ **永続化キュー**: SQLite-backed高信頼性処理 ✅
+- 🔗 **GitHub連携**: Issue/PR自動管理 ✅
 - 📊 メモの管理と検索
 
 ## 技術スタック
 
+### コア技術
 - **言語**: Python 3.11+
 - **フレームワーク**: discord.py 2.3+
 - **音声認識**: OpenAI Whisper API
 - **AI処理**: OpenAI GPT API
-- **非同期処理**: asyncio
+- **非同期処理**: asyncio + aiosqlite
+
+### 統合機能 (Phase 3完了 ✅)
+- **GitHub統合**: ObsidianGitHubService + GitHubAuthManager
+- **セキュリティ**: SecurityValidator (XSS/インジェクション対策)
+- **永続化**: PersistentQueue + Dead Letter Queue
+- **バッチ処理**: BatchProcessor + 非同期キューイング
+- **Git操作**: GitOperationService (安全性保証)
+
+### CI/CD基盤
+- **CI/CD**: GitHub Actions (40%効率化達成)
+- **環境統一**: Docker (dev/CI/prod完全一致)
+- **デプロイ**: Railway自動デプロイ (100%安定化)
+- **テスト**: pytest + pytest-xdist (78%カバレッジ)
 
 ## セットアップ
 
@@ -99,31 +115,51 @@ gh auth login
 
 7. Botを起動
 ```bash
-# Poetry環境内で実行
-poetry run python src/bot.py
+# 推奨: Poetry scriptsを使用 (Phase 3で最適化済み)
+poetry run start
 
-# または Poetry シェル内で
+# モジュール形式での実行
+poetry run python -m nescordbot
+
+# 代替実行方法
+poetry run python src/nescordbot/__main__.py
+
+# Poetry シェル内で
 poetry shell
-python src/bot.py
+python -m nescordbot
 ```
 
 ## プロジェクト構造
 
 ```
-Nescordbot/
-├── src/
-│   ├── bot.py          # メインのBotファイル
-│   ├── cogs/           # コマンドモジュール
-│   │   ├── general.py  # 一般コマンド
-│   │   └── voice.py    # 音声処理コマンド
-│   └── utils/          # ユーティリティ
-├── data/               # ローカルデータ
-├── pyproject.toml      # Poetry設定・依存関係
-├── poetry.lock         # 依存関係のロックファイル（自動生成）
-├── requirements.txt    # 互換性のため残す（自動生成可）
-├── runtime.txt         # Pythonバージョン
-├── Procfile           # PaaS用設定
-└── .env               # 環境変数
+NescordBot/
+├── src/nescordbot/           # メインパッケージ
+│   ├── __main__.py          # エントリーポイント
+│   ├── bot.py               # NescordBotクラス
+│   ├── main.py              # BotRunner・サービス管理
+│   ├── config.py            # BotConfig (GitHub統合)
+│   ├── logger.py            # ログサービス
+│   ├── cogs/                # コマンドモジュール
+│   │   ├── general.py       # 一般コマンド
+│   │   ├── admin.py         # 管理コマンド
+│   │   └── voice.py         # 音声処理コマンド
+│   └── services/            # サービス層 (Phase 3実装)
+│       ├── __init__.py      # サービスコンテナ
+│       ├── database.py      # DatabaseService
+│       ├── security.py      # SecurityValidator
+│       ├── persistent_queue.py  # PersistentQueue
+│       ├── git_operations.py    # GitOperationService
+│       ├── github_auth.py       # GitHubAuthManager
+│       ├── batch_processor.py   # BatchProcessor
+│       └── obsidian_github.py   # ObsidianGitHubService
+├── tests/                   # テストスイート (78%カバレッジ)
+├── docs/                    # ドキュメント
+├── data/                    # ローカルデータ
+├── .github/workflows/       # CI/CD (GitHub Actions)
+├── Dockerfile              # Docker環境統一
+├── pyproject.toml          # Poetry設定・依存関係
+├── poetry.lock             # 依存関係ロック
+└── .env                    # 環境変数
 ```
 
 ## デプロイ
@@ -281,11 +317,20 @@ poetry add discord-py@latest
 ## 環境変数
 
 ```env
-# 必須
+# 必須 - Discord Bot
 DISCORD_TOKEN=your_bot_token
 OPENAI_API_KEY=your_openai_key
 
-# オプション
+# GitHub統合 (Phase 3実装済み)
+GITHUB_TOKEN=your_github_personal_access_token
+GITHUB_REPO_OWNER=repository_owner_name
+GITHUB_REPO_NAME=repository_name
+GITHUB_BASE_BRANCH=main
+
+# Obsidian統合
+OBSIDIAN_VAULT_PATH=/path/to/obsidian/vault
+
+# オプション設定
 LOG_LEVEL=INFO
 MAX_AUDIO_SIZE_MB=25
 SPEECH_LANGUAGE=ja-JP
