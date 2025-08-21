@@ -191,7 +191,7 @@ jobs:
         docker run --rm \
           --env-file .env.docker \
           nescordbot:ci-test \
-          poetry run python -c "from nescordbot.main import BotRunner; runner = BotRunner(); runner.setup_logging(); print('✅ Bot runner can be initialized in Docker'); result = runner.validate_environment(); print(f'✅ Environment validation in Docker: {result}')"
+          sh -c "poetry run python -c 'from nescordbot.main import BotRunner; runner = BotRunner(); runner.setup_logging(); print(\"✅ Bot runner can be initialized in Docker\"); result = runner.validate_environment(); print(f\"✅ Environment validation in Docker: {result}\")'"
 
     - name: Verify Poetry script functionality
       run: |
