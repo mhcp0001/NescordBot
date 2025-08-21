@@ -49,5 +49,17 @@ build/
 dist/
 *.egg-info/
 
-# Railway specific
+# Railway specific (old configs)
 railway.toml
+railway.json
+nixpacks.toml
+Procfile
+requirements.txt
+
+# Claude specific
+.claude/
+.serena/
+
+# Database files
+*.db
+data/*.db
