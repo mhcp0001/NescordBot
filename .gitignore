@@ -42,6 +42,9 @@ htmlcov/
 # その他
 .cache/
 
+# Serena MCP キャッシュ
+.serena/cache/
+
 # Poetry
 poetry.lock
 .poetry/
