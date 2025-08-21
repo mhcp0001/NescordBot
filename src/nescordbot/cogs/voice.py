@@ -1,14 +1,13 @@
 import asyncio
 import io
-import logging
 import os
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 import discord
+import openai
 from discord import app_commands
 from discord.ext import commands
-from openai import OpenAI
 
 from ..services import ObsidianGitHubService
 
@@ -18,7 +17,7 @@ class Voice(commands.Cog):
 
     def __init__(self, bot, obsidian_service: Optional[ObsidianGitHubService] = None):
         self.bot = bot
-        self.openai_client: Optional[OpenAI] = None
+        self.openai_client: Optional[Any] = None
         self.obsidian_service = obsidian_service
         self.setup_openai()
 
@@ -26,8 +25,11 @@ class Voice(commands.Cog):
         """OpenAI APIの設定"""
         api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
-            self.openai_client = OpenAI(api_key=api_key)
+            openai.api_key = api_key
+            self.openai_client = openai
         else:
+            import logging
+
             logging.getLogger(__name__).warning("OpenAI APIキーが設定されていません")
 
     async def transcribe_audio(self, audio_path: str) -> Optional[str]:
@@ -36,27 +38,21 @@ class Voice(commands.Cog):
             return None
 
         try:
-            # OpenAI Whisper APIを使用 (v1.0+)
+            # OpenAI Whisper APIを使用
             with open(audio_path, "rb") as audio_file:
                 transcript = await asyncio.to_thread(
-                    self.openai_client.audio.transcriptions.create,
+                    self.openai_client.Audio.transcribe,
                     model="whisper-1",
                     file=audio_file,
                     language="ja",
-                    timeout=30.0,  # タイムアウト設定
                 )
 
-            return transcript.text if transcript else None
+            return str(transcript.text) if transcript.text else None
 
-        except TimeoutError:
-            logging.getLogger(__name__).error("音声認識タイムアウト: 処理時間が30秒を超えました")
-            return None
         except Exception as e:
-            # レート制限エラーのチェック
-            if "rate_limit" in str(e).lower() or "429" in str(e):
-                logging.getLogger(__name__).warning(f"OpenAI APIレート制限: {e}")
-            else:
-                logging.getLogger(__name__).error(f"音声認識エラー: {e}")
+            import logging
+
+            logging.getLogger(__name__).error(f"音声認識エラー: {e}")
             return None
 
     async def process_with_ai(self, text: str) -> dict:
@@ -65,55 +61,43 @@ class Voice(commands.Cog):
             return {"processed": text, "summary": "AI処理は利用できません"}
 
         try:
-            # GPTで整形 (v1.0+)
-            assert self.openai_client is not None  # Type guard
-            client = self.openai_client  # Capture in local variable for lambda
+            # GPTで整形
             response = await asyncio.to_thread(
-                lambda: client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "あなたは文字起こしされたテキストを整形し、要約するアシスタントです。誤字脱字を修正し、読みやすく整形してください。",
-                        },
-                        {"role": "user", "content": f"以下のテキストを整形し、短い要約も作成してください:\n\n{text}"},
-                    ],
-                    temperature=0.3,
-                    timeout=30.0,  # タイムアウト設定
-                )
+                self.openai_client.ChatCompletion.create,
+                model="gpt-3.5-turbo",
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "あなたは文字起こしされたテキストを整形し、要約するアシスタントです。誤字脱字を修正し、読みやすく整形してください。",
+                    },
+                    {"role": "user", "content": f"以下のテキストを整形し、短い要約も作成してください:\n\n{text}"},
+                ],
+                temperature=0.3,
             )
 
             processed_text = response.choices[0].message.content
 
-            # 要約を生成 (v1.0+)
+            # 要約を生成
             summary_response = await asyncio.to_thread(
-                lambda: client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "1行で要約してください。"},
-                        {"role": "user", "content": str(processed_text)},
-                    ],
-                    temperature=0.3,
-                    max_tokens=100,
-                    timeout=30.0,  # タイムアウト設定
-                )
+                self.openai_client.ChatCompletion.create,
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "1行で要約してください。"},
+                    {"role": "user", "content": processed_text},
+                ],
+                temperature=0.3,
+                max_tokens=100,
             )
 
             summary = summary_response.choices[0].message.content
 
             return {"processed": processed_text, "summary": summary}
 
-        except TimeoutError:
-            logging.getLogger(__name__).error("AI処理タイムアウト: 処理時間が30秒を超えました")
-            return {"processed": text, "summary": "AI処理がタイムアウトしました"}
         except Exception as e:
-            # レート制限エラーのチェック
-            if "rate_limit" in str(e).lower() or "429" in str(e):
-                logging.getLogger(__name__).warning(f"OpenAI APIレート制限: {e}")
-                return {"processed": text, "summary": "APIレート制限により処理できません"}
-            else:
-                logging.getLogger(__name__).error(f"AI処理エラー: {e}")
-                return {"processed": text, "summary": "AI処理中にエラーが発生しました"}
+            import logging
+
+            logging.getLogger(__name__).error(f"AI処理エラー: {e}")
+            return {"processed": text, "summary": "AI処理中にエラーが発生しました"}
 
     @app_commands.command(name="transcribe", description="音声ファイルを文字起こしします")
     async def transcribe_command(self, interaction: discord.Interaction):
@@ -198,6 +182,8 @@ class Voice(commands.Cog):
                 os.remove(temp_path)
 
         except Exception as e:
+            import logging
+
             logging.getLogger(__name__).error(f"音声処理エラー: {e}")
             await message.reply(f"❌ エラーが発生しました: {str(e)}")
 
@@ -265,6 +251,8 @@ class TranscriptionView(discord.ui.View):
             )
 
         except Exception as e:
+            import logging
+
             logging.getLogger(__name__).error(f"Obsidian保存エラー: {e}")
             await interaction.followup.send(f"❌ 保存中にエラーが発生しました: {str(e)}", ephemeral=True)
 
