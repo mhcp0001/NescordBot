@@ -8,6 +8,7 @@ packages = [{include = "nescordbot", from = "src"}]
 
 [tool.poetry.scripts]
 nescordbot = "nescordbot.main:main"
+start = "nescordbot.__main__:main"
 
 [tool.poetry.dependencies]
 python = "^3.11"
