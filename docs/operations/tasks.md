@@ -289,41 +289,43 @@
 - **ブランチ**: `feature/obsidian-integration`
 - **状態**: ✅ 完了（2025-08-17）
 
-##### Task 3.7.1: Obsidian GitHub統合 - 基盤構築 🔥 高優先度
-- [ ] **依存関係追加**
-  - [ ] PyGithub 2.1+ の追加
-  - [ ] GitPython 3.1+ の追加
-  - [ ] pathvalidate の追加（ファイル名検証用）
-- [ ] **セキュリティコンポーネント**
-  - [ ] SecurityValidator クラス実装
-  - [ ] XSS・インジェクション攻撃検出
-  - [ ] ファイル名・パス検証機能
-- [ ] **設定管理拡張**
-  - [ ] BotConfig クラスの拡張（複数インスタンス対応）
-  - [ ] 環境変数設定の追加
-  - [ ] 設定バリデーション機能の実装
+##### Task 3.7.1: Obsidian GitHub統合 - 基盤構築 ✅ 完了
+- [x] **依存関係追加**
+  - [x] PyGithub 2.1+ の追加
+  - [x] GitPython 3.1+ の追加
+  - [x] pathvalidate の追加（ファイル名検証用）
+- [x] **セキュリティコンポーネント**
+  - [x] SecurityValidator クラス実装
+  - [x] XSS・インジェクション攻撃検出
+  - [x] ファイル名・パス検証機能
+- [x] **設定管理拡張**
+  - [x] BotConfig クラスの拡張（複数インスタンス対応）
+  - [x] 環境変数設定の追加
+  - [x] 設定バリデーション機能の実装
 - **完了条件**: GitHub統合の基盤となるライブラリとセキュリティ機能が整う
 - **依存**: Task 3.7
 - **推定時間**: 4時間（2日）
 - **ブランチ**: `feature/obsidian-github-base`
+- **状態**: ✅ 完了（2025-08-19, Issue #48, PR #55）
 
-##### Task 3.7.2: Obsidian GitHub統合 - Git操作層 🔥 高優先度
-- [ ] **GitOperationManager実装**
-  - [ ] ローカルリポジトリ管理
-  - [ ] 安全なGit操作（パストラバーサル防止）
-  - [ ] コミット・プッシュ機能
-- [ ] **競合回避機能**
-  - [ ] インスタンス分離方式
-  - [ ] ファイルロック機構
-  - [ ] 並行実行制御
-- [ ] **エラーハンドリング**
-  - [ ] Git操作失敗時の処理
-  - [ ] ネットワーク障害対応
-  - [ ] ローカルキャッシュフォールバック
+##### Task 3.7.2: Obsidian GitHub統合 - Git操作層 ✅ 完了
+- [x] **GitOperationManager実装**
+  - [x] ローカルリポジトリ管理
+  - [x] 安全なGit操作（パストラバーサル防止）
+  - [x] コミット・プッシュ機能
+- [x] **競合回避機能**
+  - [x] インスタンス分離方式
+  - [x] ファイルロック機構
+  - [x] 並行実行制御
+- [x] **エラーハンドリング**
+  - [x] Git操作失敗時の処理
+  - [x] ネットワーク障害対応
+  - [x] ローカルキャッシュフォールバック
 - **完了条件**: 安全なGit操作が可能になる
 - **依存**: Task 3.7.1
 - **推定時間**: 4時間（2日）
 - **ブランチ**: `feature/obsidian-git-operations`
+- **状態**: ✅ 完了（2025-08-19, Issue #49, PR #55）
 
 ##### Task 3.7.3: Obsidian GitHub統合 - キュー永続化 🔥 高優先度
 - [ ] **SQLiteキューテーブル設計**
@@ -380,7 +382,66 @@
 - **推定時間**: 2時間（1日）
 - **ブランチ**: `test/obsidian-github-integration`
 
-#### Task 3.8: Railway CD設定
+#### Task 3.8: テキストメッセージ処理機能 - Fleeting Note拡張 🔥 高優先度
+- **Issue**: #72 - テキストメッセージ処理機能メインタスク
+- **Project**: Nescord Project (登録済み)
+- **設計書**: docs/design/text_message_fleeting_note.md
+
+##### Task 3.8.1: Voice Cog基盤準備
+- [ ] 既存process_with_aiメソッドの最適化確認
+- [ ] pyyaml依存関係追加
+- [ ] Fleeting Note設定追加
+- **完了条件**: 拡張準備が整う
+- **依存**: Task 3.7.5完了
+- **推定時間**: 2時間
+- **ブランチ**: `refactor/voice-cog-foundation`
+- **Issue**: #73 (Projectに登録済み)
+
+##### Task 3.8.2: テキストメッセージ処理実装
+- [ ] handle_text_messageメソッド実装
+- [ ] _format_fleeting_noteメソッド実装
+- [ ] _sanitize_usernameメソッド実装
+- [ ] !noteプレフィックス処理
+- **完了条件**: テキストがFleeting Note形式に変換される
+- **依存**: Task 3.8.1
+- **推定時間**: 4時間
+- **ブランチ**: `feature/text-message-handler`
+- **Issue**: #74 (Projectに登録済み)
+
+##### Task 3.8.3: Slash Command実装
+- [ ] /note コマンド実装
+- [ ] テキスト長制限（4000文字）
+- [ ] 非同期処理実装
+- [ ] パラメータバリデーション
+- **完了条件**: /noteコマンドが動作する
+- **依存**: Task 3.8.2
+- **推定時間**: 2時間
+- **ブランチ**: `feature/slash-command-note`
+- **Issue**: #75 (Projectに登録済み)
+
+##### Task 3.8.4: FleetingNoteView実装
+- [ ] TranscriptionView継承クラス作成
+- [ ] ファイル名生成（vault仕様準拠）
+- [ ] save_to_obsidianオーバーライド
+- [ ] ObsidianGitHubService連携
+- **完了条件**: UI経由でGitHub保存可能
+- **依存**: Task 3.8.2, Task 3.7.5
+- **推定時間**: 3時間
+- **ブランチ**: `feature/fleeting-note-view`
+- **Issue**: #76 (Projectに登録済み)
+
+##### Task 3.8.5: テスト実装
+- [ ] 単体テスト作成（test_text_message.py）
+- [ ] Slash Commandテスト
+- [ ] FleetingNoteViewテスト
+- [ ] 統合テスト（テキスト→GitHub保存）
+- **完了条件**: テストカバレッジ70%以上
+- **依存**: Task 3.8.4
+- **推定時間**: 4時間
+- **ブランチ**: `test/text-message-feature`
+- **Issue**: #77 (Projectに登録済み)
+
+#### Task 3.9: Railway CD設定
 - [ ] .github/workflows/deploy.ymlの作成
 - [ ] Railway CLI設定
 - [ ] 環境変数管理
@@ -390,7 +451,7 @@
 - **推定時間**: 2時間
 - **ブランチ**: `ci/railway-deployment`
 
-#### Task 3.9: GitHubServiceのテスト
+#### Task 3.10: GitHubServiceのテスト
 - [ ] tests/test_github_service.pyの作成
 - [ ] モックGitHub APIレスポンス
 - [ ] レート制限テスト
@@ -400,7 +461,7 @@
 - **推定時間**: 3時間
 - **ブランチ**: `test/github-service`
 
-#### Task 3.10: 統合テスト（GitHub機能）
+#### Task 3.11: 統合テスト（GitHub機能）
 - [ ] End-to-End PR作成テスト
 - [ ] エラーリカバリーテスト
 - [ ] 並行実行テスト
