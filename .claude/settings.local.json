@@ -156,7 +156,8 @@
       "WebSearch",
       "Bash(poetry check:*)",
       "Bash(poetry run python:*)",
-      "Bash(poetry show:*)"
+      "Bash(poetry show:*)",
+      "Bash(gh pr checks:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
