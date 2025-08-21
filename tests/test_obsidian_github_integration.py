@@ -245,9 +245,11 @@ class TestVoiceMessageIntegration:
         with patch.object(voice_cog, "openai_client") as mock_openai, patch(
             "builtins.open", create=True
         ), patch("os.path.exists", return_value=True), patch("os.remove"), patch("os.makedirs"):
-            # OpenAI APIレスポンス設定
-            mock_openai.Audio.transcribe.return_value = mock_openai_responses["transcript"]
-            mock_openai.ChatCompletion.create.side_effect = [
+            # OpenAI APIレスポンス設定（v1.0+対応）
+            mock_openai.audio.transcriptions.create.return_value = mock_openai_responses[
+                "transcript"
+            ]
+            mock_openai.chat.completions.create.side_effect = [
                 mock_openai_responses["chat"],
                 mock_openai_responses["summary"],
             ]
@@ -263,11 +265,11 @@ class TestVoiceMessageIntegration:
             # メッセージ処理の実行
             await voice_cog.handle_voice_message(message, attachment)
 
-            # 文字起こしが実行されたことを確認
-            mock_openai.Audio.transcribe.assert_called_once()
+            # 文字起こしが実行されたことを確認（v1.0+対応）
+            mock_openai.audio.transcriptions.create.assert_called_once()
 
-            # AI処理が実行されたことを確認
-            assert mock_openai.ChatCompletion.create.call_count == 2
+            # AI処理が実行されたことを確認（v1.0+対応）
+            assert mock_openai.chat.completions.create.call_count == 2
 
     @pytest.mark.asyncio
     async def test_save_button_interaction(self, mock_discord_objects):
@@ -448,9 +450,11 @@ class TestEndToEndScenarios:
             with patch.object(voice_cog, "openai_client") as mock_openai, patch(
                 "builtins.open", create=True
             ), patch("os.path.exists", return_value=True), patch("os.remove"), patch("os.makedirs"):
-                # OpenAI APIレスポンス設定
-                mock_openai.Audio.transcribe.return_value = mock_openai_responses["transcript"]
-                mock_openai.ChatCompletion.create.side_effect = [
+                # OpenAI APIレスポンス設定（v1.0+対応）
+                mock_openai.audio.transcriptions.create.return_value = mock_openai_responses[
+                    "transcript"
+                ]
+                mock_openai.chat.completions.create.side_effect = [
                     mock_openai_responses["chat"],
                     mock_openai_responses["summary"],
                 ]
@@ -468,9 +472,9 @@ class TestEndToEndScenarios:
                     # 完全なワークフローの実行
                     await voice_cog.handle_voice_message(message, attachment)
 
-                    # 各段階が実行されたことを確認
-                    mock_openai.Audio.transcribe.assert_called_once()
-                    assert mock_openai.ChatCompletion.create.call_count == 2
+                    # 各段階が実行されたことを確認（v1.0+対応）
+                    mock_openai.audio.transcriptions.create.assert_called_once()
+                    assert mock_openai.chat.completions.create.call_count == 2
                     mock_reply.assert_called()
 
                     # TranscriptionViewが作成されたことを確認
