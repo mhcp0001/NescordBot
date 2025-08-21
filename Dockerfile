@@ -24,9 +24,10 @@ RUN poetry config virtualenvs.create false \
 # Stage 2: Runtime
 FROM python:3.11-slim
 
-# Install runtime dependencies (ffmpeg)
+# Install runtime dependencies (ffmpeg and git for GitPython)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry in runtime for script execution
