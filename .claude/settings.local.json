@@ -155,7 +155,8 @@
       "mcp__serena__write_memory",
       "WebSearch",
       "Bash(poetry check:*)",
-      "Bash(poetry run python:*)"
+      "Bash(poetry run python:*)",
+      "Bash(poetry show:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
