@@ -43,8 +43,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY . .
 
-# Configure Poetry to not create virtualenv
-RUN poetry config virtualenvs.create false
+# Configure Poetry to not create virtualenv and install project with scripts
+RUN poetry config virtualenvs.create false \
+    && poetry install --only-root
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
