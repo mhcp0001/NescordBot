@@ -2,8 +2,7 @@
   "env": {
     "DISABLE_TELEMETRY": "1",
     "DISABLE_ERROR_REPORTING": "1",
-    "DISABLE_BUG_COMMAND": "1",
-    "API_TIMEOUT_MS": "600000"
+    "DISABLE_BUG_COMMAND": "1"
   },
   "permissions": {
     "allow": [
@@ -158,7 +157,10 @@
       "Bash(poetry run python:*)",
       "Bash(gh pr close:*)",
       "Bash(gh project item-list:*)",
-      "Bash(gh project item-edit:*)"
+      "Bash(gh project item-edit:*)",
+      "mcp__gemini-yusukedev__gemini_chat_pro",
+      "Bash(claude mcp:*)",
+      "Bash(python:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
