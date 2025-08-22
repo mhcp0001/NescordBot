@@ -2,6 +2,7 @@ import asyncio
 import io
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Optional
 
@@ -67,13 +68,24 @@ class Voice(commands.Cog):
 
     async def process_with_ai(self, text: str) -> dict:
         """AIで文字起こし結果を処理（NoteProcessingServiceに委譲）"""
-        if self.note_processing_service:
-            return await self.note_processing_service.process_text(
-                text, processing_type="voice_transcription"
-            )
+        logger = logging.getLogger(__name__)
+
+        if self.note_processing_service and self.note_processing_service.is_available():
+            try:
+                logger.info("NoteProcessingServiceで音声テキスト処理を開始")
+                result = await self.note_processing_service.process_text(
+                    text, processing_type="voice_transcription"
+                )
+                logger.info("NoteProcessingServiceでの処理が完了")
+                return result
+            except Exception as e:
+                logger.error(f"NoteProcessingService処理エラー: {e}")
+                # フォールバックに移行
+                pass
 
         # フォールバック: サービスが利用できない場合
-        return {"processed": text, "summary": "AI処理サービスは利用できません"}
+        logger.warning("NoteProcessingService利用不可、フォールバック処理を実行")
+        return {"processed": text, "summary": "AI処理サービスが利用できないため、元のテキストをそのまま表示します"}
 
     @app_commands.command(name="transcribe", description="音声ファイルを文字起こしします")
     async def transcribe_command(self, interaction: discord.Interaction):
@@ -96,7 +108,23 @@ class Voice(commands.Cog):
 
     async def handle_voice_message(self, message: discord.Message, attachment: discord.Attachment):
         """音声メッセージの処理"""
+        logger = logging.getLogger(__name__)
+        start_time = time.time()
+        temp_path = None
+
         try:
+            # ファイルサイズチェック
+            max_size = 25 * 1024 * 1024  # 25MB
+            if attachment.size > max_size:
+                await message.reply(
+                    f"❌ ファイルサイズが大きすぎます（最大: 25MB、現在: {attachment.size / 1024 / 1024:.1f}MB）"
+                )
+                return
+
+            logger.info(
+                f"音声処理開始: ユーザー={message.author}, ファイル={attachment.filename}, サイズ={attachment.size}B"
+            )
+
             # 処理中の表示
             processing_msg = await message.reply("🎤 音声を処理しています...")
 
@@ -109,11 +137,22 @@ class Voice(commands.Cog):
                 f.write(audio_data)
 
             # 文字起こし
+            transcription_start = time.time()
             transcription = await self.transcribe_audio(temp_path)
+            transcription_time = time.time() - transcription_start
+
+            logger.info(
+                f"音声認識完了: 時間={transcription_time:.2f}秒, "
+                f"文字数={len(transcription) if transcription else 0}"
+            )
 
             if transcription:
                 # AI処理
+                ai_start = time.time()
                 ai_result = await self.process_with_ai(transcription)
+                ai_time = time.time() - ai_start
+
+                logger.info(f"AI処理完了: 時間={ai_time:.2f}秒")
 
                 # 結果をEmbedで表示
                 embed = discord.Embed(
@@ -140,6 +179,13 @@ class Voice(commands.Cog):
                     embed.add_field(name="✨ 整形済みテキスト", value=processed_text, inline=False)
                     await processing_msg.edit(content=None, embed=embed)
 
+                # パフォーマンス情報を追加
+                total_time = time.time() - start_time
+                embed.set_footer(
+                    text=f"処理時間: {total_time:.2f}秒 "
+                    f"(文字起こし: {transcription_time:.2f}s, AI処理: {ai_time:.2f}s)"
+                )
+
                 # Obsidianへの保存ボタンを追加
                 view = TranscriptionView(
                     transcription=processed_text,
@@ -153,13 +199,26 @@ class Voice(commands.Cog):
                     content="❌ 音声の文字起こしに失敗しました。OpenAI APIキーが設定されているか確認してください。"
                 )
 
-            # 一時ファイルを削除
-            if os.path.exists(temp_path):
-                os.remove(temp_path)
-
         except Exception as e:
-            logging.getLogger(__name__).error(f"音声処理エラー: {e}")
-            await message.reply(f"❌ エラーが発生しました: {str(e)}")
+            total_time = time.time() - start_time
+            logger.error(f"音声処理エラー: {e}, 処理時間: {total_time:.2f}秒")
+
+            error_msg = "❌ 音声処理中にエラーが発生しました"
+            if "timeout" in str(e).lower():
+                error_msg += "（タイムアウト）"
+            elif "rate_limit" in str(e).lower():
+                error_msg += "（API制限に達しました）"
+
+            await message.reply(f"{error_msg}: {str(e)}")
+
+        finally:
+            # 一時ファイルを削除
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                    logger.debug(f"一時ファイル削除: {temp_path}")
+                except Exception as e:
+                    logger.warning(f"一時ファイル削除失敗: {e}")
 
 
 class TranscriptionView(discord.ui.View):
