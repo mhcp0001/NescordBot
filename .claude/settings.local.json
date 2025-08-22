@@ -27,7 +27,7 @@
       "Bash(git init:*)",
       "Bash(git log:*)",
       "Bash(git pull:*)",
-      "Bash(git push origin*:*)",
+      "Bash(git push:*)",
       "Bash(git status:*)",
       "Bash(head:*)",
       "Bash(kill *)",
@@ -161,7 +161,10 @@
       "mcp__gemini-yusukedev__gemini_chat_pro",
       "Bash(claude mcp:*)",
       "Bash(python:*)",
-      "Bash(gh issue:*)"
+      "Bash(gh issue:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run download:*)",
+      "Bash(gh pr ready:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
@@ -175,7 +178,6 @@
       "Bash(curl:*)",
       "Bash(dd:*)",
       "Bash(fdisk:*)",
-      "Bash(git push:*)",
       "Bash(git rebase:*)",
       "Bash(git reset:*)",
       "Bash(grep * .env*)",
