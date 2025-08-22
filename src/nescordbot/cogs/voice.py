@@ -10,16 +10,22 @@ from discord import app_commands
 from discord.ext import commands
 from openai import OpenAI
 
-from ..services import ObsidianGitHubService
+from ..services import NoteProcessingService, ObsidianGitHubService
 
 
 class Voice(commands.Cog):
     """音声処理関連のコマンドを管理するCog"""
 
-    def __init__(self, bot, obsidian_service: Optional[ObsidianGitHubService] = None):
+    def __init__(
+        self,
+        bot,
+        obsidian_service: Optional[ObsidianGitHubService] = None,
+        note_processing_service: Optional[NoteProcessingService] = None,
+    ):
         self.bot = bot
         self.openai_client: Optional[OpenAI] = None
         self.obsidian_service = obsidian_service
+        self.note_processing_service = note_processing_service
         self.setup_openai()
 
     def setup_openai(self):
@@ -60,60 +66,14 @@ class Voice(commands.Cog):
             return None
 
     async def process_with_ai(self, text: str) -> dict:
-        """AIで文字起こし結果を処理"""
-        if not self.openai_client:
-            return {"processed": text, "summary": "AI処理は利用できません"}
-
-        try:
-            # GPTで整形 (v1.0+)
-            assert self.openai_client is not None  # Type guard
-            client = self.openai_client  # Capture in local variable for lambda
-            response = await asyncio.to_thread(
-                lambda: client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {
-                            "role": "system",
-                            "content": "あなたは文字起こしされたテキストを整形し、要約するアシスタントです。誤字脱字を修正し、読みやすく整形してください。",
-                        },
-                        {"role": "user", "content": f"以下のテキストを整形し、短い要約も作成してください:\n\n{text}"},
-                    ],
-                    temperature=0.3,
-                    timeout=30.0,  # タイムアウト設定
-                )
+        """AIで文字起こし結果を処理（NoteProcessingServiceに委譲）"""
+        if self.note_processing_service:
+            return await self.note_processing_service.process_text(
+                text, processing_type="voice_transcription"
             )
 
-            processed_text = response.choices[0].message.content
-
-            # 要約を生成 (v1.0+)
-            summary_response = await asyncio.to_thread(
-                lambda: client.chat.completions.create(
-                    model="gpt-3.5-turbo",
-                    messages=[
-                        {"role": "system", "content": "1行で要約してください。"},
-                        {"role": "user", "content": str(processed_text)},
-                    ],
-                    temperature=0.3,
-                    max_tokens=100,
-                    timeout=30.0,  # タイムアウト設定
-                )
-            )
-
-            summary = summary_response.choices[0].message.content
-
-            return {"processed": processed_text, "summary": summary}
-
-        except TimeoutError:
-            logging.getLogger(__name__).error("AI処理タイムアウト: 処理時間が30秒を超えました")
-            return {"processed": text, "summary": "AI処理がタイムアウトしました"}
-        except Exception as e:
-            # レート制限エラーのチェック
-            if "rate_limit" in str(e).lower() or "429" in str(e):
-                logging.getLogger(__name__).warning(f"OpenAI APIレート制限: {e}")
-                return {"processed": text, "summary": "APIレート制限により処理できません"}
-            else:
-                logging.getLogger(__name__).error(f"AI処理エラー: {e}")
-                return {"processed": text, "summary": "AI処理中にエラーが発生しました"}
+        # フォールバック: サービスが利用できない場合
+        return {"processed": text, "summary": "AI処理サービスは利用できません"}
 
     @app_commands.command(name="transcribe", description="音声ファイルを文字起こしします")
     async def transcribe_command(self, interaction: discord.Interaction):
@@ -284,4 +244,5 @@ class TranscriptionView(discord.ui.View):
 async def setup(bot):
     """Cogをセットアップ"""
     obsidian_service = getattr(bot, "obsidian_service", None)
-    await bot.add_cog(Voice(bot, obsidian_service))
+    note_processing_service = getattr(bot, "note_processing_service", None)
+    await bot.add_cog(Voice(bot, obsidian_service, note_processing_service))

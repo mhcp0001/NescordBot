@@ -22,6 +22,7 @@ from .services import (
     GitHubAuthManager,
     GitHubService,
     GitOperationService,
+    NoteProcessingService,
     ObsidianGitHubService,
 )
 
@@ -75,6 +76,10 @@ class NescordBot(commands.Bot):
             self.logger.info("GitHub service initialized")
         else:
             self.logger.info("GitHub integration disabled (missing configuration)")
+
+        # Initialize NoteProcessingService
+        self.note_processing_service = NoteProcessingService()
+        self.logger.info("NoteProcessingService initialized")
 
         # Initialize ObsidianGitHub integration services
         self._init_obsidian_services()
