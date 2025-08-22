@@ -11,6 +11,7 @@ from .database import DatabaseService, IDataStore
 from .git_operations import FileOperation, GitOperationService
 from .github import GitHubService
 from .github_auth import GitHubAuthManager
+from .note_processing import NoteProcessingService
 from .obsidian_github import ObsidianGitHubService, ObsidianSyncStatus
 from .persistent_queue import FileRequest, PersistentQueue
 
@@ -25,6 +26,7 @@ __all__ = [
     "FileOperation",
     "BatchProcessor",
     "GitHubIntegratedQueue",
+    "NoteProcessingService",
     "ObsidianGitHubService",
     "ObsidianSyncStatus",
     "SecurityValidator",

@@ -160,7 +160,8 @@
       "Bash(gh project item-edit:*)",
       "mcp__gemini-yusukedev__gemini_chat_pro",
       "Bash(claude mcp:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(gh issue:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",

@@ -9,7 +9,7 @@ import pytest
 from openai import OpenAI
 
 from src.nescordbot.cogs.voice import TranscriptionView, Voice
-from src.nescordbot.services import ObsidianGitHubService
+from src.nescordbot.services import NoteProcessingService, ObsidianGitHubService
 
 
 @pytest.fixture
@@ -30,10 +30,19 @@ def mock_obsidian_service():
 
 
 @pytest.fixture
-def voice_cog(mock_bot, mock_obsidian_service):
+def mock_note_processing_service():
+    """モックのNoteProcessingServiceを作成"""
+    service = MagicMock(spec=NoteProcessingService)
+    service.process_text = AsyncMock(return_value={"processed": "整形されたテキスト", "summary": "要約テキスト"})
+    service.is_available = MagicMock(return_value=True)
+    return service
+
+
+@pytest.fixture
+def voice_cog(mock_bot, mock_obsidian_service, mock_note_processing_service):
     """Voice Cogインスタンスを作成"""
     with patch.dict(os.environ, {"OPENAI_API_KEY": "test-api-key"}):
-        cog = Voice(mock_bot, mock_obsidian_service)
+        cog = Voice(mock_bot, mock_obsidian_service, mock_note_processing_service)
         return cog
 
 
@@ -41,7 +50,7 @@ def voice_cog(mock_bot, mock_obsidian_service):
 def voice_cog_no_api(mock_bot, mock_obsidian_service):
     """API key無しのVoice Cogインスタンスを作成"""
     with patch.dict(os.environ, {}, clear=True):
-        cog = Voice(mock_bot, mock_obsidian_service)
+        cog = Voice(mock_bot, mock_obsidian_service, None)  # NoteProcessingServiceなし
         return cog
 
 
@@ -144,70 +153,25 @@ class TestTranscribeAudio:
 
 
 class TestProcessWithAI:
-    """AI処理メソッドのテスト"""
+    """AI処理メソッドのテスト（NoteProcessingServiceに委譲）"""
 
     @pytest.mark.asyncio
     async def test_process_with_ai_success(self, voice_cog):
         """正常なAI処理のテスト"""
-        # モックレスポンスの設定
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "整形されたテキストです"
-
-        mock_summary_response = MagicMock()
-        mock_summary_response.choices = [MagicMock()]
-        mock_summary_response.choices[0].message.content = "要約です"
-
-        voice_cog.openai_client.chat.completions.create = MagicMock(
-            side_effect=[mock_response, mock_summary_response]
-        )
-
         result = await voice_cog.process_with_ai("元のテキスト")
 
-        assert result["processed"] == "整形されたテキストです"
-        assert result["summary"] == "要約です"
-        assert voice_cog.openai_client.chat.completions.create.call_count == 2
+        assert result["processed"] == "整形されたテキスト"
+        assert result["summary"] == "要約テキスト"
+        voice_cog.note_processing_service.process_text.assert_called_once_with(
+            "元のテキスト", processing_type="voice_transcription"
+        )
 
     @pytest.mark.asyncio
-    async def test_process_with_ai_no_client(self, voice_cog_no_api):
-        """クライアントがない場合のテスト"""
+    async def test_process_with_ai_no_service(self, voice_cog_no_api):
+        """NoteProcessingServiceがない場合のテスト"""
         result = await voice_cog_no_api.process_with_ai("テキスト")
         assert result["processed"] == "テキスト"
-        assert result["summary"] == "AI処理は利用できません"
-
-    @pytest.mark.asyncio
-    async def test_process_with_ai_timeout(self, voice_cog):
-        """タイムアウトエラーのテスト"""
-        voice_cog.openai_client.chat.completions.create = MagicMock(
-            side_effect=TimeoutError("Timeout")
-        )
-
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
-
-            result = await voice_cog.process_with_ai("テキスト")
-
-            assert result["processed"] == "テキスト"
-            assert result["summary"] == "AI処理がタイムアウトしました"
-            mock_logger.error.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_process_with_ai_rate_limit(self, voice_cog):
-        """レート制限エラーのテスト"""
-        voice_cog.openai_client.chat.completions.create = MagicMock(
-            side_effect=Exception("rate_limit_exceeded")
-        )
-
-        with patch("logging.getLogger") as mock_get_logger:
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
-
-            result = await voice_cog.process_with_ai("テキスト")
-
-            assert result["processed"] == "テキスト"
-            assert result["summary"] == "APIレート制限により処理できません"
-            mock_logger.warning.assert_called_once()
+        assert result["summary"] == "AI処理サービスは利用できません"
 
 
 class TestHandleVoiceMessage:
