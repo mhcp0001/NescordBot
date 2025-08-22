@@ -356,7 +356,7 @@ async def test_setup(bot):
     bot.add_cog = AsyncMock()
 
     # Import and run setup
-    from nescordbot.cogs.text import setup
+    from nescordbot.cogs.text import TextCog, setup
 
     await setup(bot)
 
