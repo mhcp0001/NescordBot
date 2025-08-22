@@ -238,22 +238,33 @@ class TestVoiceMessageIntegration:
         mock_obsidian_service.save_to_obsidian.return_value = str(uuid4())
         mock_bot.obsidian_service = mock_obsidian_service
 
-        # Voice cogの作成
-        voice_cog = Voice(mock_bot, mock_obsidian_service)
+        # NoteProcessingServiceの作成とモック
+        mock_note_processing_service = AsyncMock()
+        mock_note_processing_service.process_text.return_value = {
+            "processed": "Formatted transcript",  # Voice cogが期待するキー名
+            "summary": "Test summary",
+        }
 
-        # OpenAI APIのモック
+        # Voice cogの作成
+        voice_cog = Voice(mock_bot, mock_obsidian_service, mock_note_processing_service)
+
+        # OpenAI APIのモック（NoteProcessingService内）
         with patch.object(voice_cog, "openai_client") as mock_openai, patch(
-            "builtins.open", create=True
-        ), patch("os.path.exists", return_value=True), patch("os.remove"), patch("os.makedirs"):
+            "src.nescordbot.services.note_processing.OpenAI"
+        ) as mock_openai_class, patch("builtins.open", create=True), patch(
+            "os.path.exists", return_value=True
+        ), patch(
+            "os.remove"
+        ), patch(
+            "os.makedirs"
+        ):
+            # NoteProcessingService内のOpenAIクライアントモック
+            mock_openai_instance = AsyncMock()
+            mock_openai_class.return_value = mock_openai_instance
             # OpenAI APIレスポンス設定（v1.0+対応）
             mock_openai.audio.transcriptions.create.return_value = mock_openai_responses[
                 "transcript"
             ]
-            mock_openai.chat.completions.create.side_effect = [
-                mock_openai_responses["chat"],
-                mock_openai_responses["summary"],
-            ]
-
             # 添付ファイルの設定
             message = mock_discord_objects["message"]
             attachment = mock_discord_objects["attachment"]
@@ -268,8 +279,8 @@ class TestVoiceMessageIntegration:
             # 文字起こしが実行されたことを確認（v1.0+対応）
             mock_openai.audio.transcriptions.create.assert_called_once()
 
-            # AI処理が実行されたことを確認（v1.0+対応）
-            assert mock_openai.chat.completions.create.call_count == 2
+            # NoteProcessingServiceが呼び出されたことを確認
+            mock_note_processing_service.process_text.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_save_button_interaction(self, mock_discord_objects):
@@ -443,8 +454,15 @@ class TestEndToEndScenarios:
             bot = NescordBot()
             await bot._init_obsidian_services_async()
 
+            # NoteProcessingServiceのモック
+            mock_note_processing_service = AsyncMock()
+            mock_note_processing_service.process_text.return_value = {
+                "processed": "Formatted transcript",  # Voice cogが期待するキー名
+                "summary": "Test summary",
+            }
+
             # Voice cogの作成
-            voice_cog = Voice(bot, bot.obsidian_service)
+            voice_cog = Voice(bot, bot.obsidian_service, mock_note_processing_service)
 
             # OpenAI APIのモック
             with patch.object(voice_cog, "openai_client") as mock_openai, patch(
@@ -453,10 +471,6 @@ class TestEndToEndScenarios:
                 # OpenAI APIレスポンス設定（v1.0+対応）
                 mock_openai.audio.transcriptions.create.return_value = mock_openai_responses[
                     "transcript"
-                ]
-                mock_openai.chat.completions.create.side_effect = [
-                    mock_openai_responses["chat"],
-                    mock_openai_responses["summary"],
                 ]
 
                 # メッセージとアタッチメントの設定
@@ -474,7 +488,7 @@ class TestEndToEndScenarios:
 
                     # 各段階が実行されたことを確認（v1.0+対応）
                     mock_openai.audio.transcriptions.create.assert_called_once()
-                    assert mock_openai.chat.completions.create.call_count == 2
+                    mock_note_processing_service.process_text.assert_called_once()
                     mock_reply.assert_called()
 
                     # TranscriptionViewが作成されたことを確認
