@@ -1,10 +1,13 @@
 """Text message processing cog for Discord bot."""
 
+import asyncio
+import html
 import logging
 import re
 from datetime import datetime
 from typing import Optional
 
+import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -13,6 +16,11 @@ from ..services.note_processing import NoteProcessingService
 from ..services.obsidian_github import ObsidianGitHubService
 
 logger = logging.getLogger(__name__)
+
+# Configuration constants
+MAX_TEXT_LENGTH = 4000
+VIEW_TIMEOUT = 300  # 5 minutes
+NOTE_PATTERN = re.compile(r"^!note\s+(.+)", re.DOTALL | re.IGNORECASE)
 
 
 class TextCog(commands.Cog):
@@ -49,14 +57,17 @@ class TextCog(commands.Cog):
             text: Text content to process
         """
         try:
-            # Validate input
+            # Validate and sanitize input
             if not text or not text.strip():
                 await message.reply("❌ テキストを入力してください。")
                 return
 
+            # Sanitize input for security
+            text = text.strip()
+
             # Check text length
-            if len(text) > 4000:
-                await message.reply("❌ テキストが長すぎます（最大4000文字）。")
+            if len(text) > MAX_TEXT_LENGTH:
+                await message.reply(f"❌ テキストが長すぎます（最大{MAX_TEXT_LENGTH}文字）。")
                 return
 
             # Send initial response
@@ -74,8 +85,14 @@ class TextCog(commands.Cog):
                     processed_text = result.get("processed", text)
                     summary = result.get("summary", "")
                     logger.info("Text processed with NoteProcessingService")
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    logger.warning(f"AI service temporarily unavailable: {e}")
+                    # Continue with original text if AI service is unavailable
+                except ValueError as e:
+                    logger.error(f"Invalid input for AI processing: {e}")
+                    # Continue with original text if input is invalid
                 except Exception as e:
-                    logger.error(f"Error processing text with AI: {e}")
+                    logger.error(f"Unexpected error in AI processing: {e}")
                     # Continue with original text if AI processing fails
 
             # Format as Fleeting Note
@@ -136,17 +153,20 @@ class TextCog(commands.Cog):
         guild_name = message.guild.name if message.guild else "Direct Message"
         channel_name = message.channel.name if hasattr(message.channel, "name") else "DM"
 
-        # Build YAML frontmatter
+        # Build YAML frontmatter (safely escaped)
+        safe_summary = html.escape(str(summary[:50] + "..." if len(summary) > 50 else summary))
+        safe_channel = html.escape(str(channel_name))
+
         frontmatter = f"""---
 id: {note_id}
-title: "{summary[:50] + '...' if len(summary) > 50 else summary}"
+title: "{safe_summary}"
 type: fleeting_note
 status: fleeting
 tags:
   - capture/
   - discord/
   - discord/{note_type}
-context: "Discord #{channel_name} での{note_type}メッセージ"
+context: "Discord #{safe_channel} での{note_type}メッセージ"
 source: "Discord Bot NescordBot"
 created: {created_date}
 ---"""
@@ -202,7 +222,7 @@ created: {created_date}
         return sanitized[:20]
 
     @app_commands.command(name="note", description="テキストをFleeting Noteに変換して保存")
-    @app_commands.describe(text="変換するテキスト（最大4000文字）")
+    @app_commands.describe(text=f"変換するテキスト（最大{MAX_TEXT_LENGTH}文字）")
     async def note_command(
         self, interaction: discord.Interaction, text: app_commands.Range[str, 1, 4000]
     ) -> None:
@@ -228,23 +248,30 @@ created: {created_date}
                     processed_text = result.get("processed", text)
                     summary = result.get("summary", "")
                     logger.info("Text processed with NoteProcessingService for slash command")
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    logger.warning(f"AI service temporarily unavailable in slash command: {e}")
+                except ValueError as e:
+                    logger.error(f"Invalid input for AI processing in slash command: {e}")
                 except Exception as e:
-                    logger.error(f"Error processing text with AI in slash command: {e}")
+                    logger.error(f"Unexpected error in AI processing for slash command: {e}")
 
             # Create a pseudo-message object for formatting
             # This is needed because slash commands don't have a message object
             class PseudoMessage:
-                def __init__(self, interaction):
+                def __init__(self, interaction: discord.Interaction):
                     self.author = interaction.user
                     self.guild = interaction.guild
                     self.channel = interaction.channel
                     self.id = interaction.id
 
-            pseudo_message = PseudoMessage(interaction)
+            pseudo_message = PseudoMessage(interaction)  # type: ignore
 
             # Format as Fleeting Note
             fleeting_note_content = self._format_fleeting_note(
-                text=processed_text, summary=summary, message=pseudo_message, note_type="text"
+                text=processed_text,
+                summary=summary,
+                message=pseudo_message,  # type: ignore
+                note_type="text",
             )
 
             # Create view with save button
@@ -253,7 +280,7 @@ created: {created_date}
                 summary=summary,
                 obsidian_service=self.obsidian_service,
                 note_type="text",
-                message=pseudo_message,
+                message=pseudo_message,  # type: ignore
             )
 
             # Create embed for display
@@ -291,9 +318,9 @@ created: {created_date}
         if message.author.bot:
             return
 
-        # Check for !note prefix
-        if message.content.startswith("!note "):
-            text = message.content[6:]  # Remove "!note " prefix
+        # Check for !note prefix using regex for better efficiency
+        if match := NOTE_PATTERN.match(message.content):
+            text = match.group(1).strip()
             if text:
                 await self.handle_text_message(message, text)
 
@@ -318,7 +345,7 @@ class FleetingNoteView(discord.ui.View):
             note_type: Type of note (text/voice)
             message: Original Discord message
         """
-        super().__init__(timeout=300)  # 5 minute timeout
+        super().__init__(timeout=VIEW_TIMEOUT)
         self.content = content
         self.summary = summary
         self.obsidian_service = obsidian_service
@@ -383,7 +410,8 @@ class FleetingNoteView(discord.ui.View):
 
                 # Disable button after successful save
                 button.disabled = True
-                await interaction.message.edit(view=self)
+                if interaction.message:
+                    await interaction.message.edit(view=self)
 
                 logger.info(f"Fleeting Note saved: {filename}")
 

@@ -280,11 +280,14 @@ class TestFleetingNoteView:
         interaction.message.edit = AsyncMock()
         interaction.channel = MagicMock()
 
-        button = MagicMock()
-        button.disabled = False
-
-        # Call the callback method directly
-        await view.save_to_obsidian.callback(view, interaction, button)
+        # Call the button callback directly
+        # save_to_obsidian is a button callback, so we need to call it directly
+        button = None
+        for item in view.children:
+            if hasattr(item, "callback") and item.label == "Obsidianに保存":
+                button = item
+                await item.callback(interaction)
+                break
 
         # Verify defer was called
         interaction.response.defer.assert_called_once_with(ephemeral=True)
@@ -297,6 +300,7 @@ class TestFleetingNoteView:
         assert "保存しました" in interaction.followup.send.call_args[0][0]
 
         # Verify button was disabled
+        assert button is not None
         assert button.disabled is True
 
     @pytest.mark.asyncio
@@ -307,10 +311,12 @@ class TestFleetingNoteView:
         interaction = AsyncMock(spec=discord.Interaction)
         interaction.response.send_message = AsyncMock()
 
-        button = MagicMock()
-
-        # Call the callback method directly
-        await view.save_to_obsidian.callback(view, interaction, button)
+        # Call the button callback directly
+        # save_to_obsidian is a button callback, so we need to call it directly
+        for item in view.children:
+            if hasattr(item, "callback") and item.label == "Obsidianに保存":
+                await item.callback(interaction)
+                break
 
         # Should send error message
         interaction.response.send_message.assert_called_once()
@@ -330,10 +336,12 @@ class TestFleetingNoteView:
         interaction.followup.send = AsyncMock()
         interaction.channel = MagicMock()
 
-        button = MagicMock()
-
-        # Call the callback method directly
-        await view.save_to_obsidian.callback(view, interaction, button)
+        # Call the button callback directly
+        # save_to_obsidian is a button callback, so we need to call it directly
+        for item in view.children:
+            if hasattr(item, "callback") and item.label == "Obsidianに保存":
+                await item.callback(interaction)
+                break
 
         # Should send error message
         interaction.followup.send.assert_called_once()
