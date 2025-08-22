@@ -171,7 +171,7 @@ class TestProcessWithAI:
         """NoteProcessingServiceがない場合のテスト"""
         result = await voice_cog_no_api.process_with_ai("テキスト")
         assert result["processed"] == "テキスト"
-        assert result["summary"] == "AI処理サービスは利用できません"
+        assert result["summary"] == "AI処理サービスが利用できないため、元のテキストをそのまま表示します"
 
 
 class TestHandleVoiceMessage:
@@ -187,6 +187,8 @@ class TestHandleVoiceMessage:
 
         mock_attachment = MagicMock(spec=discord.Attachment)
         mock_attachment.read = AsyncMock(return_value=b"audio_data")
+        mock_attachment.size = 1024  # 1KB size
+        mock_attachment.filename = "test.ogg"
 
         mock_processing_msg = MagicMock()
         mock_processing_msg.edit = AsyncMock()
@@ -220,6 +222,8 @@ class TestHandleVoiceMessage:
 
         mock_attachment = MagicMock(spec=discord.Attachment)
         mock_attachment.read = AsyncMock(return_value=b"audio_data")
+        mock_attachment.size = 1024  # 1KB size
+        mock_attachment.filename = "test_failed.ogg"
 
         mock_processing_msg = MagicMock()
         mock_processing_msg.edit = AsyncMock()
