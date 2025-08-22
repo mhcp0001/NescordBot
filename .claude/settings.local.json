@@ -156,7 +156,9 @@
       "WebSearch",
       "Bash(poetry check:*)",
       "Bash(poetry run python:*)",
-      "Bash(gh pr close:*)"
+      "Bash(gh pr close:*)",
+      "Bash(gh project item-list:*)",
+      "Bash(gh project item-edit:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",

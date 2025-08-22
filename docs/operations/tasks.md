@@ -386,60 +386,107 @@
 - **Issue**: #72 - テキストメッセージ処理機能メインタスク
 - **Project**: Nescord Project (登録済み)
 - **設計書**: docs/design/text_message_fleeting_note.md
+- **🔄 Gemini改善案採用**: 3フェーズ・8タスク分割によるリスク軽減アプローチ
 
-##### Task 3.8.1: Voice Cog基盤準備
-- [ ] 既存process_with_aiメソッドの最適化確認
-- [ ] pyyaml依存関係追加
-- [ ] Fleeting Note設定追加
-- **完了条件**: 拡張準備が整う
+##### 🔐 フェーズ1: 基盤リファクタリングと安定化（既存機能保護重視）
+
+**Task 3.8.1: NoteProcessingService作成**
+- [ ] src/services/note_processing.py作成
+- [ ] 既存process_with_aiメソッドをVoice cogから抽出
+- [ ] 音声・テキスト共通のAI処理サービスとして汎用化
+- [ ] 入力形式（音声/テキスト）を知らない独立したモジュール設計
+- **完了条件**: 汎用的なテキスト処理サービスが作成される
 - **依存**: Task 3.7.5完了
-- **推定時間**: 2時間
-- **ブランチ**: `refactor/voice-cog-foundation`
+- **推定時間**: 3時間（1日）
+- **ブランチ**: `refactor/note-processing-service`
 - **Issue**: #73 (Projectに登録済み)
 
-##### Task 3.8.2: テキストメッセージ処理実装
-- [ ] handle_text_messageメソッド実装
-- [ ] _format_fleeting_noteメソッド実装
-- [ ] _sanitize_usernameメソッド実装
-- [ ] !noteプレフィックス処理
-- **完了条件**: テキストがFleeting Note形式に変換される
+**Task 3.8.2: Voice Cogリファクタリング**
+- [ ] 既存Voice cogを新しいNoteProcessingServiceを使用するよう修正
+- [ ] 音声処理フローの動作確認・互換性保証
+- [ ] 既存APIインターフェースの維持
+- **完了条件**: 既存Voice機能が新サービス経由で動作
 - **依存**: Task 3.8.1
-- **推定時間**: 4時間
-- **ブランチ**: `feature/text-message-handler`
+- **推定時間**: 2時間（1日）
+- **ブランチ**: `refactor/voice-cog-service-integration`
+- **Issue**: #73 (Projectに登録済み)
+
+**Task 3.8.3: リグレッションテスト**
+- [ ] 既存Voice cogのテストを全て実行
+- [ ] リファクタリング前後の動作比較・検証
+- [ ] **デグレード（既存機能劣化）が発生していないことを確認**
+- [ ] **⚠️ このステップ完了まで新機能開発に進まない**
+- **完了条件**: 既存機能に影響がないことが保証される
+- **依存**: Task 3.8.2
+- **推定時間**: 1時間
+- **ブランチ**: `test/regression-voice-cog`
+- **Issue**: #73 (Projectに登録済み)
+
+##### 🚀 フェーズ2: テキストメッセージ処理機能の実装
+
+**Task 3.8.4: TextCog作成**
+- [ ] src/cogs/text.py作成
+- [ ] テキストメッセージ処理専用のCogクラス実装
+- [ ] NoteProcessingServiceとの連携基盤構築
+- **完了条件**: テキスト処理専用Cogが作成される
+- **依存**: Task 3.8.3（リグレッションテスト完了）
+- **推定時間**: 2時間（1日）
+- **ブランチ**: `feature/text-cog-foundation`
 - **Issue**: #74 (Projectに登録済み)
 
-##### Task 3.8.3: Slash Command実装
-- [ ] /note コマンド実装
-- [ ] テキスト長制限（4000文字）
-- [ ] 非同期処理実装
-- [ ] パラメータバリデーション
-- **完了条件**: /noteコマンドが動作する
-- **依存**: Task 3.8.2
-- **推定時間**: 2時間
+**Task 3.8.5: コアロジック実装**
+- [ ] handle_text_messageメソッド実装
+- [ ] _format_fleeting_noteメソッド実装
+- [ ] NoteProcessingService + ObsidianGitHubServiceの連携
+- [ ] Fleeting Note形式への変換処理
+- **完了条件**: テキストメッセージがFleeting Note形式に変換される
+- **依存**: Task 3.8.4
+- **推定時間**: 3時間（1.5日）
+- **ブランチ**: `feature/text-message-core-logic`
+- **Issue**: #74 (Projectに登録済み)
+
+**Task 3.8.6: エラーハンドリング・ユーザーフィードバック**
+- [ ] API呼び出し失敗時のエラー処理
+- [ ] ユーザーへの成功/失敗通知メッセージ
+- [ ] Ephemeral Messageによる処理状況通知
+- [ ] レート制限・タイムアウト対応
+- **完了条件**: ユーザーに適切なフィードバックが提供される
+- **依存**: Task 3.8.5
+- **推定時間**: 2時間（1日）
+- **ブランチ**: `feature/text-message-error-handling`
+- **Issue**: #74 (Projectに登録済み)
+
+##### 🎯 フェーズ3: インターフェースと統合
+
+**Task 3.8.7: /note Slash Command実装**
+- [ ] /note コマンドの実装
+- [ ] テキスト長制限（4000文字）とバリデーション
+- [ ] TextCogコアロジックとの連携
+- [ ] 非同期処理とユーザーフィードバック
+- **完了条件**: /noteコマンドが完全に動作する
+- **依存**: Task 3.8.6
+- **推定時間**: 2時間（1日）
 - **ブランチ**: `feature/slash-command-note`
 - **Issue**: #75 (Projectに登録済み)
 
-##### Task 3.8.4: FleetingNoteView実装
-- [ ] TranscriptionView継承クラス作成
-- [ ] ファイル名生成（vault仕様準拠）
-- [ ] save_to_obsidianオーバーライド
-- [ ] ObsidianGitHubService連携
-- **完了条件**: UI経由でGitHub保存可能
-- **依存**: Task 3.8.2, Task 3.7.5
-- **推定時間**: 3時間
-- **ブランチ**: `feature/fleeting-note-view`
+**Task 3.8.8: 統合テスト実装**
+- [ ] End-to-Endテストシナリオ作成
+- [ ] /noteコマンド実行からGitHubファイル保存までの全体フロー
+- [ ] エラー時のフォールバック確認
+- [ ] 既存機能との互換性テスト
+- [ ] テストカバレッジ70%以上の達成
+- **完了条件**: テキストメッセージ機能のE2Eテストが成功
+- **依存**: Task 3.8.7
+- **推定時間**: 2時間（1日）
+- **ブランチ**: `test/text-message-e2e`
 - **Issue**: #76 (Projectに登録済み)
 
-##### Task 3.8.5: テスト実装
-- [ ] 単体テスト作成（test_text_message.py）
-- [ ] Slash Commandテスト
-- [ ] FleetingNoteViewテスト
-- [ ] 統合テスト（テキスト→GitHub保存）
-- **完了条件**: テストカバレッジ70%以上
-- **依存**: Task 3.8.4
-- **推定時間**: 4時間
-- **ブランチ**: `test/text-message-feature`
-- **Issue**: #77 (Projectに登録済み)
+#### 🎯 改善されたタスク分解の利点
+- **✅ リスク軽減**: 既存Voice機能のデグレード完全防止
+- **✅ 管理しやすさ**: 各タスク1-2日の適切なサイズ
+- **✅ 段階的検証**: フェーズごとの動作確認
+- **✅ 品質保証**: リグレッションテストによる安全性確保
+- **✅ 並行開発可能**: フェーズ1完了後、フェーズ2と他タスクの並行実行
 
 #### Task 3.9: Railway CD設定
 - [ ] .github/workflows/deploy.ymlの作成
