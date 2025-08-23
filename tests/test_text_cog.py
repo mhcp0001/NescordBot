@@ -192,11 +192,11 @@ class TestTextCog:
         # Verify defer was called
         interaction.response.defer.assert_called_once()
 
-        # Verify followup was sent (may be called multiple times due to status updates)
+        # Verify followup was sent
         assert interaction.followup.send.called
-        # Check first call contains queue message
-        first_call_args = interaction.followup.send.call_args_list[0]
-        assert "処理キューに追加しました" in first_call_args[0][0]
+        # Check that the response contains the expected completion message
+        call_args = interaction.followup.send.call_args
+        assert "Fleeting Noteを作成しました" in call_args[1]["content"]
 
     @pytest.mark.asyncio
     async def test_on_message_with_prefix(self, text_cog, mock_message):
