@@ -271,7 +271,7 @@ class AdminCog(commands.Cog):
             await interaction.followup.send("❌ データベースクリア中にエラーが発生しました。", ephemeral=True)
 
     @app_commands.command(name="debug", description="システム設定と状態の診断")
-    @app_commands.describe(category="診断カテゴリ (config, services)")
+    @app_commands.describe(category="診断カテゴリ (config, services, queue, github, process)")
     async def debug(self, interaction: discord.Interaction, category: str = "config"):
         """Debug system configuration and services."""
         await interaction.response.defer(ephemeral=True)
@@ -281,9 +281,16 @@ class AdminCog(commands.Cog):
                 await self._debug_config(interaction)
             elif category.lower() == "services":
                 await self._debug_services(interaction)
+            elif category.lower() == "queue":
+                await self._debug_queue(interaction)
+            elif category.lower() == "github":
+                await self._debug_github(interaction)
+            elif category.lower() == "process":
+                await self._debug_process(interaction)
             else:
                 await interaction.followup.send(
-                    "❌ 無効なカテゴリです。利用可能: `config`, `services`", ephemeral=True
+                    "❌ 無効なカテゴリです。利用可能: `config`, `services`, `queue`, `github`, `process`",
+                    ephemeral=True,
                 )
 
         except Exception as e:
@@ -379,6 +386,205 @@ class AdminCog(commands.Cog):
         embed.add_field(name="🔧 サービス状態", value="\n".join(services_status), inline=False)
 
         await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _debug_queue(self, interaction: discord.Interaction):
+        """Debug queue status and processing statistics."""
+        try:
+            obsidian_service = getattr(self.bot, "obsidian_service", None)
+
+            if not obsidian_service:
+                await interaction.followup.send(
+                    "❌ ObsidianGitHubService not available", ephemeral=True
+                )
+                return
+
+            # Get processing statistics
+            stats = await obsidian_service.get_processing_statistics()
+
+            if stats.get("error"):
+                await interaction.followup.send(f"❌ Queue診断エラー: {stats['error']}", ephemeral=True)
+                return
+
+            # Format queue status
+            batch_stats = stats.get("batch_processor", {})
+            status_counts = stats.get("status_counts", {})
+
+            embed = discord.Embed(
+                title="📊 キュー状態診断",
+                color=0x00FF00 if batch_stats.get("initialized", False) else 0xFF0000,
+                timestamp=datetime.now(),
+            )
+
+            # Processing Status
+            processing_active = batch_stats.get("processing_active", False)
+            embed.add_field(
+                name="⚙️ 処理状態", value=f"{'🟢 動作中' if processing_active else '🔴 停止中'}", inline=True
+            )
+
+            # Queue Status
+            queue_status = batch_stats.get("queue_status", {})
+            queue_text = ""
+            for status, count in queue_status.items():
+                emoji = {"pending": "⏳", "processing": "🔄", "completed": "✅", "failed": "❌"}.get(
+                    status, "📋"
+                )
+                queue_text += f"{emoji} {status}: {count}\n"
+
+            embed.add_field(
+                name="📈 キュー統計", value=queue_text if queue_text else "データなし", inline=True
+            )
+
+            # Request Status
+            request_text = ""
+            for status, count in status_counts.items():
+                emoji = {"queued": "⏳", "processing": "🔄", "completed": "✅", "failed": "❌"}.get(
+                    status, "📋"
+                )
+                request_text += f"{emoji} {status}: {count}\n"
+
+            embed.add_field(
+                name="🔍 リクエスト状況", value=request_text if request_text else "データなし", inline=True
+            )
+
+            # Recent requests
+            recent_requests = await obsidian_service.list_recent_requests(5)
+            if recent_requests:
+                recent_text = ""
+                for req in recent_requests[:5]:
+                    status_emoji = {
+                        "queued": "⏳",
+                        "processing": "🔄",
+                        "completed": "✅",
+                        "failed": "❌",
+                    }.get(req.status, "📋")
+                    recent_text += f"{status_emoji} {req.file_path} ({req.status})\n"
+                embed.add_field(name="📝 最近のリクエスト", value=recent_text, inline=False)
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            self.logger.error(f"Debug queue command error: {e}", exc_info=True)
+            await interaction.followup.send(f"❌ キュー診断エラー: {str(e)}", ephemeral=True)
+
+    async def _debug_github(self, interaction: discord.Interaction):
+        """Debug GitHub connection and repository access."""
+        try:
+            obsidian_service = getattr(self.bot, "obsidian_service", None)
+
+            if not obsidian_service:
+                await interaction.followup.send(
+                    "❌ ObsidianGitHubService not available", ephemeral=True
+                )
+                return
+
+            # Get batch processor
+            batch_processor = getattr(obsidian_service, "batch_processor", None)
+            if not batch_processor:
+                await interaction.followup.send("❌ BatchProcessor not available", ephemeral=True)
+                return
+
+            # Get Git operations service
+            git_service = getattr(batch_processor, "git_operations", None)
+            if not git_service:
+                await interaction.followup.send(
+                    "❌ GitOperationService not available", ephemeral=True
+                )
+                return
+
+            embed = discord.Embed(title="🔗 GitHub接続診断", color=0x00FF00, timestamp=datetime.now())
+
+            # Test repository status
+            try:
+                repo_status = await git_service.get_repository_status()
+
+                embed.add_field(
+                    name="📂 リポジトリ状態",
+                    value=f"✅ 接続成功\n🏷️ ブランチ: {repo_status.get('branch', 'unknown')}",
+                    inline=True,
+                )
+
+            except Exception as repo_error:
+                embed.add_field(name="📂 リポジトリ状態", value=f"❌ 接続失敗: {str(repo_error)}", inline=True)
+                embed.color = 0xFF0000
+
+            # Test authentication
+            auth_manager = getattr(batch_processor, "auth_manager", None)
+            if auth_manager:
+                try:
+                    # Simple auth check (this method should exist)
+                    auth_status = getattr(auth_manager, "_initialized", False)
+                    embed.add_field(
+                        name="🔐 認証状態", value="✅ 認証済み" if auth_status else "❌ 未認証", inline=True
+                    )
+                except Exception as auth_error:
+                    embed.add_field(name="🔐 認証状態", value=f"❌ 認証エラー: {str(auth_error)}", inline=True)
+                    embed.color = 0xFF0000
+
+            # Configuration check
+            config = self.bot.config
+            github_enabled = getattr(config, "github_obsidian_enabled", False)
+            repo_owner = getattr(config, "github_repo_owner", None)
+            repo_name = getattr(config, "github_repo_name", None)
+
+            config_text = f"🔧 有効: {'✅' if github_enabled else '❌'}\n"
+            config_text += f"👤 オーナー: {repo_owner or '❌ 未設定'}\n"
+            config_text += f"📁 リポジトリ: {repo_name or '❌ 未設定'}"
+
+            embed.add_field(name="⚙️ GitHub設定", value=config_text, inline=False)
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            self.logger.error(f"Debug GitHub command error: {e}", exc_info=True)
+            await interaction.followup.send(f"❌ GitHub診断エラー: {str(e)}", ephemeral=True)
+
+    async def _debug_process(self, interaction: discord.Interaction):
+        """Manually trigger batch processing for testing."""
+        try:
+            obsidian_service = getattr(self.bot, "obsidian_service", None)
+
+            if not obsidian_service:
+                await interaction.followup.send(
+                    "❌ ObsidianGitHubService not available", ephemeral=True
+                )
+                return
+
+            batch_processor = getattr(obsidian_service, "batch_processor", None)
+            if not batch_processor:
+                await interaction.followup.send("❌ BatchProcessor not available", ephemeral=True)
+                return
+
+            # Trigger manual batch processing
+            result = await batch_processor.process_batch_manually()
+
+            if result.get("success"):
+                files_processed = result.get("files_processed", 0)
+                remaining = result.get("remaining_pending", 0)
+
+                embed = discord.Embed(title="🔄 手動バッチ処理完了", color=0x00FF00, timestamp=datetime.now())
+
+                embed.add_field(
+                    name="📊 処理結果",
+                    value=f"✅ 処理済み: {files_processed}\n⏳ 残り: {remaining}",
+                    inline=True,
+                )
+
+                if result.get("completed", 0) > 0:
+                    embed.add_field(name="✅ 成功", value=str(result.get("completed", 0)), inline=True)
+
+                if result.get("failed", 0) > 0:
+                    embed.add_field(name="❌ 失敗", value=str(result.get("failed", 0)), inline=True)
+                    embed.color = 0xFFA500  # Orange for partial success
+
+            else:
+                embed = discord.Embed(title="❌ 手動バッチ処理失敗", color=0xFF0000, timestamp=datetime.now())
+                embed.add_field(name="エラー詳細", value=result.get("error", "不明なエラー"), inline=False)
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            self.logger.error(f"Debug process command error: {e}", exc_info=True)
+            await interaction.followup.send(f"❌ 手動処理エラー: {str(e)}", ephemeral=True)
 
     async def _check_admin_permissions(self, interaction: discord.Interaction) -> bool:
         """Check if user has admin permissions."""

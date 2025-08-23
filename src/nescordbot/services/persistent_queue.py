@@ -71,6 +71,15 @@ class PersistentQueue:
         await self._create_queue_tables()
         await self._recover_pending_tasks()
 
+    def set_git_service(self, git_service) -> None:
+        """Set GitOperationService for actual file processing.
+
+        Args:
+            git_service: GitOperationService instance for GitHub operations
+        """
+        self._git_service = git_service
+        self.logger.info("GitOperationService injected into PersistentQueue")
+
     async def _create_queue_tables(self) -> None:
         """SQLiteキューテーブルの作成"""
         queue_schema = """
@@ -469,15 +478,69 @@ class PersistentQueue:
             self.logger.info("Queue processing stopped")
 
     async def _process_batch(self, file_requests: List[FileRequest], batch_id: int) -> bool:
-        """バッチ処理の実装（サブクラスでオーバーライド）"""
-        # 仮想的な処理 - 実際の実装では GitHubService などを呼び出す
-        self.logger.debug(f"Processing batch {batch_id} with {len(file_requests)} items")
+        """バッチ処理の実装 - 実際のGitHub保存処理"""
+        self.logger.info(f"Processing batch {batch_id} with {len(file_requests)} items")
 
-        # シミュレートされた処理時間
-        await asyncio.sleep(0.1)
+        try:
+            # GitOperationServiceへのアクセス（依存性注入で取得）
+            git_service = getattr(self, "_git_service", None)
+            if not git_service:
+                self.logger.error("GitOperationService not available - cannot process batch")
+                return False
 
-        # 成功をシミュレート（実際の実装では実際の処理結果を返す）
-        return True
+            success_count = 0
+            failed_requests = []
+
+            for request in file_requests:
+                try:
+                    # ファイルパスを生成
+                    file_path = (
+                        f"{request.directory}/{request.filename}"
+                        if request.directory
+                        else request.filename
+                    )
+
+                    # GitHub にファイルを保存
+                    result = await git_service.create_or_update_file(
+                        file_path=file_path,
+                        content=request.content,
+                        commit_message=f"Add {request.metadata.get('type', 'fleeting_note')}: "
+                        f"{request.filename}",
+                        metadata=request.metadata,
+                    )
+
+                    if result.get("success", False):
+                        success_count += 1
+                        self.logger.info(f"Successfully saved file: {file_path}")
+                    else:
+                        failed_requests.append((request, result.get("error", "Unknown error")))
+                        self.logger.error(f"Failed to save file {file_path}: {result.get('error')}")
+
+                except Exception as e:
+                    failed_requests.append((request, str(e)))
+                    self.logger.error(
+                        f"Exception saving file {request.filename}: {e}", exc_info=True
+                    )
+
+            # バッチ処理結果をログ
+            if failed_requests:
+                self.logger.warning(
+                    f"Batch {batch_id} completed with {success_count}/"
+                    f"{len(file_requests)} successes"
+                )
+                for request, error in failed_requests:
+                    self.logger.error(f"Failed request: {request.filename} - {error}")
+            else:
+                self.logger.info(
+                    f"Batch {batch_id} completed successfully - all {success_count} files saved"
+                )
+
+            # 全て成功した場合のみTrue、一部でも失敗した場合はFalse
+            return len(failed_requests) == 0
+
+        except Exception as e:
+            self.logger.error(f"Fatal error processing batch {batch_id}: {e}", exc_info=True)
+            return False
 
     async def cleanup(self) -> None:
         """リソースのクリーンアップ"""

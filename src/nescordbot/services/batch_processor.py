@@ -67,6 +67,9 @@ class BatchProcessor:
             await self.git_operations.initialize()
             await self.queue.initialize()
 
+            # Inject GitOperationService into PersistentQueue
+            self.queue.set_git_service(self.git_operations)
+
             self._initialized = True
             logger.info("Batch processor initialized successfully")
 

@@ -394,9 +394,9 @@ class FleetingNoteView(discord.ui.View):
             # Generate filename
             filename = self._generate_filename(interaction.user.name)
 
-            # Save to GitHub
+            # Save to GitHub queue
             try:
-                await self.obsidian_service.save_to_obsidian(
+                request_id = await self.obsidian_service.save_to_obsidian(
                     filename=filename,
                     content=self.content,
                     directory="Fleeting Notes",
@@ -409,24 +409,68 @@ class FleetingNoteView(discord.ui.View):
                     },
                 )
 
+                # Send initial queued message
                 await interaction.followup.send(
-                    f"✅ Obsidianに保存しました！\n📁 `Fleeting Notes/{filename}`", ephemeral=True
+                    f"📝 Fleeting Noteを処理キューに追加しました\n"
+                    f"📁 `Fleeting Notes/{filename}`\n"
+                    f"⏳ GitHub保存処理中...\n"
+                    f"📍 リクエストID: `{request_id[:8]}`",
+                    ephemeral=True,
                 )
 
-                # Disable button after successful save
+                # Disable button after successful queue addition
                 button.disabled = True
                 if interaction.message:
                     await interaction.message.edit(view=self)
 
-                logger.info(f"Fleeting Note saved: {filename}")
+                logger.info(
+                    f"Fleeting Note queued for processing: {filename} (request_id: {request_id})"
+                )
+
+                # Optional: Wait briefly and check processing status
+                try:
+                    import asyncio
+
+                    await asyncio.sleep(2.0)  # Wait for potential immediate processing
+
+                    status = await self.obsidian_service.get_status(request_id)
+                    if status and status.status != "queued":
+                        # Send status update if processing started
+                        status_emoji = (
+                            "✅"
+                            if status.status == "completed"
+                            else "⚠️"
+                            if status.status == "failed"
+                            else "🔄"
+                        )
+                        status_msg = {
+                            "completed": "GitHub保存が完了しました",
+                            "failed": "GitHub保存に失敗しました",
+                            "processing": "GitHub保存処理中です",
+                        }.get(status.status, f"処理状況: {status.status}")
+
+                        await interaction.followup.send(
+                            f"{status_emoji} {status_msg}\n" f"📁 `{status.file_path}`",
+                            ephemeral=True,
+                        )
+                except Exception as status_check_error:
+                    # Status check is optional, don't fail the main process
+                    logger.debug(f"Status check failed (non-critical): {status_check_error}")
 
             except Exception as e:
-                logger.error(f"Error saving to Obsidian: {e}")
-                await interaction.followup.send(f"❌ 保存中にエラーが発生しました: {str(e)}", ephemeral=True)
+                logger.error(f"Error queuing Obsidian save: {e}")
+                await interaction.followup.send(
+                    f"❌ 保存キューへの追加中にエラーが発生しました: {str(e)}\n" f"💡 `/debug config` でサービス状態を確認してください",
+                    ephemeral=True,
+                )
 
         except Exception as e:
             logger.error(f"Error in save_to_obsidian button: {e}", exc_info=True)
-            await interaction.followup.send("❌ エラーが発生しました。", ephemeral=True)
+            try:
+                await interaction.followup.send("❌ エラーが発生しました。", ephemeral=True)
+            except Exception:
+                # If followup fails too, at least log the error
+                logger.error("Failed to send error message to user")
 
 
 async def setup(bot: commands.Bot):
