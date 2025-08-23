@@ -329,6 +329,7 @@ class NescordBot(commands.Bot):
         obsidian_enabled = getattr(self.config, "github_obsidian_enabled", False)
         if not obsidian_enabled:
             self.logger.info("ObsidianGitHub integration disabled (github_obsidian_enabled=False)")
+            self.logger.info("To enable: Set GITHUB_OBSIDIAN_ENABLED=true in environment variables")
             return
 
         # Check required configuration
@@ -339,6 +340,10 @@ class NescordBot(commands.Bot):
             self.logger.warning(
                 f"ObsidianGitHub integration disabled (missing config: {missing_config})"
             )
+            self.logger.warning("Required environment variables:")
+            for key in missing_config:
+                env_key = key.upper()
+                self.logger.warning(f"  - {env_key}")
             return
 
         try:
