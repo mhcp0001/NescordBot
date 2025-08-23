@@ -505,7 +505,7 @@ class AdminCog(commands.Cog):
 
             except Exception as repo_error:
                 embed.add_field(name="📂 リポジトリ状態", value=f"❌ 接続失敗: {str(repo_error)}", inline=True)
-                embed.color = 0xFF0000
+                embed.colour = 0xFF0000
 
             # Test authentication
             auth_manager = getattr(batch_processor, "auth_manager", None)
@@ -518,7 +518,7 @@ class AdminCog(commands.Cog):
                     )
                 except Exception as auth_error:
                     embed.add_field(name="🔐 認証状態", value=f"❌ 認証エラー: {str(auth_error)}", inline=True)
-                    embed.color = 0xFF0000
+                    embed.colour = 0xFF0000
 
             # Configuration check
             config = self.bot.config
@@ -574,7 +574,7 @@ class AdminCog(commands.Cog):
 
                 if result.get("failed", 0) > 0:
                     embed.add_field(name="❌ 失敗", value=str(result.get("failed", 0)), inline=True)
-                    embed.color = 0xFFA500  # Orange for partial success
+                    embed.colour = 0xFFA500  # Orange for partial success
 
             else:
                 embed = discord.Embed(title="❌ 手動バッチ処理失敗", color=0xFF0000, timestamp=datetime.now())
