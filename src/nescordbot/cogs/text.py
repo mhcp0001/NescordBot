@@ -380,7 +380,12 @@ class FleetingNoteView(discord.ui.View):
         """
         try:
             if not self.obsidian_service:
-                await interaction.response.send_message("❌ Obsidian保存サービスが利用できません。", ephemeral=True)
+                await interaction.response.send_message(
+                    "❌ Obsidian保存サービスが利用できません。\n"
+                    "管理者に設定確認を依頼してください。\n"
+                    "詳細: `/debug config` コマンドで診断可能",
+                    ephemeral=True,
+                )
                 return
 
             # Defer response

@@ -270,6 +270,116 @@ class AdminCog(commands.Cog):
             self.logger.error(f"Error in cleardb command: {e}")
             await interaction.followup.send("❌ データベースクリア中にエラーが発生しました。", ephemeral=True)
 
+    @app_commands.command(name="debug", description="システム設定と状態の診断")
+    @app_commands.describe(category="診断カテゴリ (config, services)")
+    async def debug(self, interaction: discord.Interaction, category: str = "config"):
+        """Debug system configuration and services."""
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            if category.lower() == "config":
+                await self._debug_config(interaction)
+            elif category.lower() == "services":
+                await self._debug_services(interaction)
+            else:
+                await interaction.followup.send(
+                    "❌ 無効なカテゴリです。利用可能: `config`, `services`", ephemeral=True
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error in debug command: {e}")
+            await interaction.followup.send("❌ デバッグ中にエラーが発生しました。", ephemeral=True)
+
+    async def _debug_config(self, interaction: discord.Interaction):
+        """Debug configuration settings."""
+        embed = discord.Embed(
+            title="🔧 設定診断レポート", color=discord.Color.blue(), timestamp=datetime.now()
+        )
+
+        # Check ObsidianGitHub configuration
+        config = self.bot.config
+        obsidian_enabled = getattr(config, "github_obsidian_enabled", False)
+
+        # Basic config status
+        embed.add_field(
+            name="📝 Obsidian GitHub統合", value="✅ 有効" if obsidian_enabled else "❌ 無効", inline=True
+        )
+
+        # Check required environment variables
+        required_vars = [
+            ("GITHUB_TOKEN", getattr(config, "github_token", None)),
+            ("GITHUB_REPO_OWNER", getattr(config, "github_repo_owner", None)),
+            ("GITHUB_REPO_NAME", getattr(config, "github_repo_name", None)),
+        ]
+
+        missing_vars = []
+        config_status = []
+
+        for var_name, var_value in required_vars:
+            if var_value:
+                config_status.append(f"✅ {var_name}")
+            else:
+                config_status.append(f"❌ {var_name}")
+                missing_vars.append(var_name)
+
+        embed.add_field(name="🔑 必須環境変数", value="\n".join(config_status) or "なし", inline=True)
+
+        # Service initialization status
+        service_status = (
+            "✅ 初期化済み"
+            if hasattr(self.bot, "obsidian_service") and self.bot.obsidian_service
+            else "❌ 未初期化"
+        )
+        embed.add_field(name="🔧 サービス状態", value=service_status, inline=True)
+
+        # Recommendations
+        if missing_vars or not obsidian_enabled:
+            recommendations = []
+            if not obsidian_enabled:
+                recommendations.append("• `GITHUB_OBSIDIAN_ENABLED=true` を設定")
+            if missing_vars:
+                recommendations.append(f"• 不足環境変数を設定: {', '.join(missing_vars)}")
+
+            embed.add_field(name="💡 推奨アクション", value="\n".join(recommendations), inline=False)
+
+        embed.set_footer(text="本番環境では管理者にお問い合わせください")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _debug_services(self, interaction: discord.Interaction):
+        """Debug services status."""
+        embed = discord.Embed(
+            title="🔧 サービス診断レポート", color=discord.Color.blue(), timestamp=datetime.now()
+        )
+
+        # Check services availability
+        services_info = [
+            (
+                "DatabaseService",
+                hasattr(self.bot, "database_service") and self.bot.database_service,
+            ),
+            (
+                "ObsidianService",
+                hasattr(self.bot, "obsidian_service") and self.bot.obsidian_service,
+            ),
+            (
+                "GitHubAuthManager",
+                hasattr(self.bot, "github_auth_manager") and self.bot.github_auth_manager,
+            ),
+            (
+                "SecurityValidator",
+                hasattr(self.bot, "security_validator") and self.bot.security_validator,
+            ),
+        ]
+
+        services_status = []
+        for service_name, is_available in services_info:
+            status = "✅ 利用可能" if is_available else "❌ 未初期化"
+            services_status.append(f"{service_name}: {status}")
+
+        embed.add_field(name="🔧 サービス状態", value="\n".join(services_status), inline=False)
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
     async def _check_admin_permissions(self, interaction: discord.Interaction) -> bool:
         """Check if user has admin permissions."""
         # Check if user is bot owner

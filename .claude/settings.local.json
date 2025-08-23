@@ -164,7 +164,9 @@
       "Bash(gh issue:*)",
       "Bash(gh pr checks:*)",
       "Bash(gh run download:*)",
-      "Bash(gh pr ready:*)"
+      "Bash(gh pr ready:*)",
+      "Bash(poetry run coverage run:*)",
+      "Bash(poetry run coverage:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
