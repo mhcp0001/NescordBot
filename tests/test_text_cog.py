@@ -192,10 +192,11 @@ class TestTextCog:
         # Verify defer was called
         interaction.response.defer.assert_called_once()
 
-        # Verify followup was sent
-        interaction.followup.send.assert_called_once()
-        call_args = interaction.followup.send.call_args
-        assert "Fleeting Note" in call_args[1]["content"]
+        # Verify followup was sent (may be called multiple times due to status updates)
+        assert interaction.followup.send.called
+        # Check first call contains queue message
+        first_call_args = interaction.followup.send.call_args_list[0]
+        assert "処理キューに追加しました" in first_call_args[0][0]
 
     @pytest.mark.asyncio
     async def test_on_message_with_prefix(self, text_cog, mock_message):
@@ -295,9 +296,13 @@ class TestFleetingNoteView:
         # Verify save was called
         obsidian_service.save_to_obsidian.assert_called_once()
 
-        # Verify success message
-        interaction.followup.send.assert_called_once()
-        assert "保存しました" in interaction.followup.send.call_args[0][0]
+        # Verify success messages - should be called twice (queue notification + status)
+        assert interaction.followup.send.called
+        assert interaction.followup.send.call_count == 2
+
+        # Check first call - queue notification
+        first_call_args = interaction.followup.send.call_args_list[0]
+        assert "処理キューに追加しました" in first_call_args[0][0]
 
         # Verify button was disabled
         assert button is not None
