@@ -139,8 +139,9 @@ class TestTextCog:
         # Check YAML frontmatter
         assert "---" in result
         assert "type: fleeting_note" in result
-        assert "tags:" in result
-        assert "discord/text" in result
+        assert "id:" in result
+        assert "title:" in result
+        assert "created:" in result
 
         # Check content sections
         assert "## 💭 アイデア・思考の断片" in result
@@ -149,10 +150,8 @@ class TestTextCog:
         assert "## ❓ 疑問・調べたいこと" in result
         assert "## 📝 次のアクション" in result
 
-        # Check Discord info
-        assert "TestGuild" in result
-        assert "general" in result
-        assert "TestUser" in result
+        # Check note footer
+        assert "素早く記録することを優先" in result
 
     def test_sanitize_username(self, text_cog):
         """Test username sanitization."""

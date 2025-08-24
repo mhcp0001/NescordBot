@@ -149,25 +149,14 @@ class TextCog(commands.Cog):
         note_id = now.strftime("%Y%m%d%H%M%S")
         created_date = now.strftime("%Y-%m-%d %H:%M")
 
-        # Get Discord context
-        guild_name = message.guild.name if message.guild else "Direct Message"
-        channel_name = message.channel.name if hasattr(message.channel, "name") else "DM"
-
         # Build YAML frontmatter (safely escaped)
         safe_summary = html.escape(str(summary[:50] + "..." if len(summary) > 50 else summary))
-        safe_channel = html.escape(str(channel_name))
 
         frontmatter = f"""---
 id: {note_id}
 title: "{safe_summary}"
 type: fleeting_note
 status: fleeting
-tags:
-  - capture/
-  - discord/
-  - discord/{note_type}
-context: "Discord #{safe_channel} での{note_type}メッセージ"
-source: "Discord Bot NescordBot"
 created: {created_date}
 ---"""
 
@@ -189,15 +178,6 @@ created: {created_date}
 - [ ] Permanent Noteに昇華する
 - [ ] 関連資料を調査する
 - [ ] アーカイブする
-
----
-
-### Discord情報
-- **サーバー**: {guild_name}
-- **チャンネル**: #{channel_name}
-- **ユーザー**: {message.author.name}
-- **メッセージID**: {message.id}
-- **タイプ**: {note_type}メッセージ
 
 ---
 *素早く記録することを優先。後で整理・発展させる。*
