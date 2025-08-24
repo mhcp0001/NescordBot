@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .database import DatabaseService
+from .git_operations import FileOperation
 
 
 @dataclass
@@ -491,36 +492,54 @@ class PersistentQueue:
             success_count = 0
             failed_requests = []
 
+            # バッチで処理するFileOperationリストを作成
+            operations = []
             for request in file_requests:
                 try:
-                    # ファイルパスを生成
-                    file_path = (
-                        f"{request.directory}/{request.filename}"
-                        if request.directory
-                        else request.filename
-                    )
-
-                    # GitHub にファイルを保存
-                    result = await git_service.create_or_update_file(
-                        file_path=file_path,
+                    # FileOperationオブジェクトを作成
+                    operation = FileOperation(
+                        filename=request.filename,
                         content=request.content,
+                        directory=request.directory or "",
+                        operation="create",
                         commit_message=f"Add {request.metadata.get('type', 'fleeting_note')}: "
                         f"{request.filename}",
-                        metadata=request.metadata,
                     )
-
-                    if result.get("success", False):
-                        success_count += 1
-                        self.logger.info(f"Successfully saved file: {file_path}")
-                    else:
-                        failed_requests.append((request, result.get("error", "Unknown error")))
-                        self.logger.error(f"Failed to save file {file_path}: {result.get('error')}")
+                    operations.append(operation)
 
                 except Exception as e:
                     failed_requests.append((request, str(e)))
                     self.logger.error(
-                        f"Exception saving file {request.filename}: {e}", exc_info=True
+                        f"Exception creating operation for {request.filename}: {e}", exc_info=True
                     )
+
+            # バッチでGitHub保存を実行
+            if operations:
+                try:
+                    result = await git_service.create_files(operations)
+
+                    if result.get("success", False) and result.get("files_created", 0) > 0:
+                        success_count = result.get("files_created", 0)
+                        self.logger.info(f"Successfully saved {success_count} files to GitHub")
+
+                        # 個別のファイル情報をログ出力
+                        for created_file in result.get("created_files", []):
+                            self.logger.info(f"Successfully saved file: {created_file}")
+                    else:
+                        # バッチ全体が失敗した場合、全リクエストを失敗として処理
+                        for request in file_requests:
+                            failed_requests.append(
+                                (request, result.get("error", "Batch operation failed"))
+                            )
+                        self.logger.error(
+                            f"Batch operation failed: {result.get('error', 'Unknown error')}"
+                        )
+
+                except Exception as e:
+                    # バッチ処理でエラーが発生した場合、全リクエストを失敗として処理
+                    for request in file_requests:
+                        failed_requests.append((request, str(e)))
+                    self.logger.error(f"Exception in batch processing: {e}", exc_info=True)
 
             # バッチ処理結果をログ
             if failed_requests:
