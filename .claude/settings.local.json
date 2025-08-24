@@ -166,7 +166,8 @@
       "Bash(gh run download:*)",
       "Bash(gh pr ready:*)",
       "Bash(poetry run coverage run:*)",
-      "Bash(poetry run coverage:*)"
+      "Bash(poetry run coverage:*)",
+      "Bash(git config:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",

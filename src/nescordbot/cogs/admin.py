@@ -271,7 +271,7 @@ class AdminCog(commands.Cog):
             await interaction.followup.send("❌ データベースクリア中にエラーが発生しました。", ephemeral=True)
 
     @app_commands.command(name="debug", description="システム設定と状態の診断")
-    @app_commands.describe(category="診断カテゴリ (config, services, queue, github, process)")
+    @app_commands.describe(category="診断カテゴリ (config, services, queue, github, process, openai)")
     async def debug(self, interaction: discord.Interaction, category: str = "config"):
         """Debug system configuration and services."""
         await interaction.response.defer(ephemeral=True)
@@ -287,9 +287,12 @@ class AdminCog(commands.Cog):
                 await self._debug_github(interaction)
             elif category.lower() == "process":
                 await self._debug_process(interaction)
+            elif category.lower() == "openai":
+                await self._debug_openai(interaction)
             else:
                 await interaction.followup.send(
-                    "❌ 無効なカテゴリです。利用可能: `config`, `services`, `queue`, `github`, `process`",
+                    "❌ 無効なカテゴリです。利用可能: `config`, `services`, `queue`, `github`, "
+                    "`process`, `openai`",
                     ephemeral=True,
                 )
 
@@ -609,6 +612,67 @@ class AdminCog(commands.Cog):
                 pass  # Ignore database errors for permission checks
 
         return False
+
+    async def _debug_openai(self, interaction: discord.Interaction):
+        """OpenAI API診断"""
+        try:
+            # Get NoteProcessingService from bot
+            note_service = getattr(self.bot, "note_processing_service", None)
+
+            if not note_service:
+                embed = discord.Embed(
+                    title="🤖 OpenAI API診断",
+                    description="❌ NoteProcessingServiceが初期化されていません",
+                    colour=discord.Colour.red(),
+                )
+                await interaction.followup.send(embed=embed)
+                return
+
+            # Check API status
+            status = await note_service.check_api_status()
+
+            # Create embed based on status
+            if status.get("available"):
+                embed = discord.Embed(title="🤖 OpenAI API診断", colour=discord.Colour.green())
+                embed.add_field(name="🔐 API状態", value="✅ 利用可能", inline=True)
+                embed.add_field(name="🤖 モデル", value=status.get("model", "unknown"), inline=True)
+                embed.add_field(name="📊 ステータス", value=status.get("status", "unknown"), inline=True)
+                embed.add_field(
+                    name="🧪 テスト結果",
+                    value="✅ 成功" if status.get("test_response") else "❌ 失敗",
+                    inline=False,
+                )
+            else:
+                embed = discord.Embed(title="🤖 OpenAI API診断", colour=discord.Colour.red())
+                embed.add_field(name="🔐 API状態", value="❌ 利用不可", inline=False)
+
+                error = status.get("error", "Unknown error")
+                classified_error = status.get("classified_error", "")
+                suggestion = status.get("suggestion", "")
+
+                embed.add_field(name="❌ エラー詳細", value=f"```{error[:1000]}```", inline=False)
+                if classified_error:
+                    embed.add_field(name="📝 ユーザー向けメッセージ", value=classified_error, inline=False)
+                if suggestion:
+                    embed.add_field(name="💡 対処法", value=suggestion, inline=False)
+
+            # Add environment info
+            import os
+
+            api_key_status = "✅ 設定済み" if os.getenv("OPENAI_API_KEY") else "❌ 未設定"
+            embed.add_field(name="🔑 API Key", value=api_key_status, inline=True)
+
+            embed.set_footer(text="OpenAI API診断 - Issue #92対応")
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            self.logger.error(f"Error in _debug_openai: {e}")
+            embed = discord.Embed(
+                title="🤖 OpenAI API診断",
+                description=f"❌ 診断中にエラーが発生しました: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed)
 
 
 class ConfirmationView(discord.ui.View):
