@@ -19,11 +19,13 @@ from .security import SecurityValidator
 from .services import (
     BatchProcessor,
     DatabaseService,
+    EmbeddingService,
     GitHubAuthManager,
     GitHubService,
     GitOperationService,
     NoteProcessingService,
     ObsidianGitHubService,
+    create_service_container,
 )
 
 
@@ -83,6 +85,9 @@ class NescordBot(commands.Bot):
 
         # Initialize ObsidianGitHub integration services
         self._init_obsidian_services()
+
+        # Initialize ServiceContainer with Phase 4 services
+        self._init_service_container()
 
         self.logger.info("NescordBot instance created")
 
@@ -390,6 +395,24 @@ class NescordBot(commands.Bot):
             self.logger.error(f"Failed to initialize ObsidianGitHub services async: {e}")
             # Clean up partially initialized services
             self.obsidian_service = None
+
+    def _init_service_container(self) -> None:
+        """Initialize ServiceContainer with Phase 4 services."""
+        try:
+            # Create service container
+            self.service_container = create_service_container(self.config)
+
+            # Register EmbeddingService factory
+            def create_embedding_service() -> EmbeddingService:
+                return EmbeddingService(self.config)
+
+            self.service_container.register_factory(EmbeddingService, create_embedding_service)
+
+            self.logger.info("ServiceContainer initialized with EmbeddingService")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize ServiceContainer: {e}")
+            self.service_container = None  # type: ignore[assignment]
 
 
 async def main() -> None:
