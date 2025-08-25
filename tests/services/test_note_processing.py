@@ -101,7 +101,7 @@ class TestNoteProcessingService:
             result = await service_with_api.process_text("テキスト")
 
             assert result["processed"] == "テキスト"
-            assert result["summary"] == "APIレート制限により処理できません"
+            assert result["summary"] == "OpenAI APIの利用制限に達しました。時間を置いて再度お試しください。"
             mock_logger.warning.assert_called_once()
 
     @pytest.mark.asyncio
@@ -115,7 +115,7 @@ class TestNoteProcessingService:
             result = await service_with_api.process_text("テキスト")
 
             assert result["processed"] == "テキスト"
-            assert result["summary"] == "AI処理中にエラーが発生しました"
+            assert result["summary"] == "AI処理中にエラーが発生しました。管理者に確認してください。"
             mock_logger.error.assert_called_once()
 
     @pytest.mark.asyncio

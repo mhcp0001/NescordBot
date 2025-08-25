@@ -14,6 +14,14 @@ from .github_auth import GitHubAuthManager
 from .note_processing import NoteProcessingService
 from .obsidian_github import ObsidianGitHubService, ObsidianSyncStatus
 from .persistent_queue import FileRequest, PersistentQueue
+from .service_container import (
+    ServiceContainer,
+    ServiceInitializationError,
+    ServiceNotFoundError,
+    create_service_container,
+    get_service_container,
+    reset_service_container,
+)
 
 __all__ = [
     "DatabaseService",
@@ -30,4 +38,10 @@ __all__ = [
     "ObsidianGitHubService",
     "ObsidianSyncStatus",
     "SecurityValidator",
+    "ServiceContainer",
+    "ServiceNotFoundError",
+    "ServiceInitializationError",
+    "get_service_container",
+    "create_service_container",
+    "reset_service_container",
 ]
