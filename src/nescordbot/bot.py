@@ -408,11 +408,21 @@ class NescordBot(commands.Bot):
 
             self.service_container.register_factory(EmbeddingService, create_embedding_service)
 
-            self.logger.info("ServiceContainer initialized with EmbeddingService")
+            # Register ChromaDBService factory
+            from .services.chromadb_service import ChromaDBService
+
+            def create_chromadb_service() -> ChromaDBService:
+                return ChromaDBService(self.config)
+
+            self.service_container.register_factory(ChromaDBService, create_chromadb_service)
+
+            self.logger.info(
+                "ServiceContainer initialized with EmbeddingService and ChromaDBService"
+            )
 
         except Exception as e:
             self.logger.error(f"Failed to initialize ServiceContainer: {e}")
-            self.service_container = None  # type: ignore[assignment]
+            self.service_container = None  # type: ignore[assignment]  # type: ignore[assignment]
 
 
 async def main() -> None:

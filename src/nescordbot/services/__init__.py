@@ -7,6 +7,7 @@ and infrastructure operations for the bot.
 
 from ..security import SecurityValidator
 from .batch_processor import BatchProcessor, GitHubIntegratedQueue
+from .chromadb_service import ChromaDBService, DocumentMetadata, SearchResult
 from .database import DatabaseService, IDataStore
 from .embedding import EmbeddingResult, EmbeddingService, EmbeddingServiceError
 from .git_operations import FileOperation, GitOperationService
@@ -27,6 +28,9 @@ from .service_container import (
 __all__ = [
     "DatabaseService",
     "IDataStore",
+    "ChromaDBService",
+    "DocumentMetadata",
+    "SearchResult",
     "EmbeddingService",
     "EmbeddingResult",
     "EmbeddingServiceError",
