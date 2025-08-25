@@ -13,10 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import chromadb
-from chromadb.api.models.Collection import Collection
-from chromadb.config import Settings
-from chromadb.errors import NotFoundError
+import chromadb  # type: ignore[import-untyped]
+from chromadb.config import Settings  # type: ignore[import-untyped]
+from chromadb.errors import NotFoundError  # type: ignore[import-untyped]
 
 from ..config import BotConfig
 
@@ -89,7 +88,7 @@ class ChromaDBService:
         """
         self.config = config
         self.client: Optional[Any] = None
-        self.collection: Optional[Collection] = None
+        self.collection: Optional[Any] = None
         self.executor = ThreadPoolExecutor(max_workers=4)
         self._initialized = False
 
@@ -131,7 +130,9 @@ class ChromaDBService:
                 anonymized_telemetry=False,  # Disable telemetry
             )
 
-            client = chromadb.PersistentClient(path=str(self.persist_dir), settings=settings)
+            client = chromadb.PersistentClient(  # type: ignore[call-arg]
+                path=str(self.persist_dir), settings=settings
+            )
 
             logger.info("ChromaDB client created successfully")
             return client
@@ -140,7 +141,7 @@ class ChromaDBService:
             logger.error(f"Failed to create ChromaDB client: {e}")
             raise ChromaDBConnectionError(f"Client creation failed: {e}")
 
-    def _get_or_create_collection(self) -> Collection:
+    def _get_or_create_collection(self) -> Any:
         """Get or create ChromaDB collection (runs in thread pool)."""
         try:
             if not self.client:
@@ -486,7 +487,7 @@ class ChromaDBService:
         if not self.collection:
             raise ChromaDBCollectionError("Collection not initialized")
 
-        return self.collection.count()
+        return int(self.collection.count())
 
     async def reset_collection(self) -> bool:
         """
