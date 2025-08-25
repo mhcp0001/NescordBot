@@ -172,7 +172,8 @@
       "mcp__gemini-yusukedev__gemini_chat_flash",
       "Bash(gh project:*)",
       "Bash(git merge:*)",
-      "mcp__github__get_issue"
+      "mcp__github__get_issue",
+      "Bash(git stash:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
