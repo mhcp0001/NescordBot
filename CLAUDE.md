@@ -77,6 +77,38 @@ Before using the automated workflow, ensure gh CLI is properly set up:
 - **Automation First**: Leverage gh CLI and GitHub features to minimize manual work
 - **Template-Driven**: Use standardized templates for consistency and completeness
 - **Auto-Linking**: Automatic connection between branches, commits, PRs, and issues
+- **Project Status Sync**: Maintain GitHub Project board status in sync with development progress
+
+### GitHub Project Status Management
+**Status Flow**: Todo → In Progress → Done
+
+#### Status Update Commands
+```bash
+# Constants for Nescord Project
+PROJECT_ID="PVT_kwHOAVzM6c4BAoYL"
+STATUS_FIELD_ID="PVTSSF_lAHOAVzM6c4BAoYLzgzYKtg"
+TODO_ID="f75ad846"
+IN_PROGRESS_ID="47fc9ee4"
+DONE_ID="98236657"
+
+# Todo → In Progress (when starting work)
+gh project item-edit --id [PROJECT_ITEM_ID] \
+  --field-id "$STATUS_FIELD_ID" \
+  --single-select-option-id "$IN_PROGRESS_ID" \
+  --project-id "$PROJECT_ID"
+
+# In Progress → Done (when PR merged)
+gh project item-edit --id [PROJECT_ITEM_ID] \
+  --field-id "$STATUS_FIELD_ID" \
+  --single-select-option-id "$DONE_ID" \
+  --project-id "$PROJECT_ID"
+```
+
+#### Status Update Rules (Mandatory)
+1. **Branch Creation Time**: Update Issue status from Todo → In Progress
+2. **PR Merge Time**: Update Issue status from In Progress → Done
+3. **Alternative**: Use GitHub UI drag-and-drop on project board
+4. **Violation**: Any Issue not following status flow must be corrected immediately
 
 ### Automated Issue Workflow
 

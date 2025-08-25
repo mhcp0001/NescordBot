@@ -2,9 +2,11 @@
 
 ## 概要
 
-- 総タスク数: 48
-- 推定作業時間: 8週間（各Phase 2週間）
-- 優先度: 高（基盤構築）
+- **Phase 1-3**: 48タスク (8週間) - 基盤構築・機能実装・運用基盤
+- **Phase 4**: 32タスク (12週間) - PKM機能「自分の第二の脳を育てるBot」
+- **Phase 5**: 10タスク (2週間) - 運用基盤完成・本格運用
+- 総タスク数: 90タスク
+- 推定作業時間: 22週間
 - **ブランチ戦略**: GitHub Flow（機能別ブランチ → mainへのPR）
 
 ## ブランチ命名規則
@@ -518,37 +520,346 @@
 - **推定時間**: 3時間
 - **ブランチ**: `test/github-integration`
 
-### Phase 4: 運用基盤完成 + 本格運用（2週間）
+### Phase 4: PKM機能「自分の第二の脳を育てるBot」（12週間）
 
-#### Task 4.1: VoiceCog設計
+#### Phase 4.1: 基盤構築（週1-3）
+
+#### Task 4.1.1: ServiceContainer Phase 4拡張
+- [ ] Phase 4新規サービス用ServiceContainer拡張実装
+- [ ] KnowledgeManager、EmbeddingService、ChromaDBService等の依存関係注入対応
+- [ ] 既存サービスとの互換性維持確認
+- [ ] 初期化順序とライフサイクル管理実装
+- **完了条件**: Phase 4サービスが正常に登録・取得できること
+- **依存**: なし
+- **推定時間**: 8時間
+- **ブランチ**: `refactor/service-container-phase4`
+
+#### Task 4.1.2: BotConfig Gemini・ChromaDB設定追加
+- [ ] Gemini API設定項目追加（api_key, monthly_limit等）
+- [ ] ChromaDB設定項目追加（persist_directory, collection_name等）
+- [ ] PKM機能設定項目追加（hybrid_search_alpha等）
+- [ ] API移行モード設定（openai/gemini/hybrid）
+- [ ] Pydantic バリデーション追加
+- **完了条件**: 全Phase 4設定が環境変数から正常に読み込まれること
+- **依存**: なし
+- **推定時間**: 4時間
+- **ブランチ**: `feature/config-phase4-settings`
+
+#### Task 4.1.3: データベーススキーマ拡張
+- [ ] knowledge_notes テーブル作成
+- [ ] note_links テーブル作成
+- [ ] token_usage テーブル作成
+- [ ] 既存transcriptionsテーブル拡張（note_id, tags, links列追加）
+- [ ] FTS5検索インデックス構築
+- [ ] マイグレーション機能実装
+- **完了条件**: 新規テーブルとインデックスが正常に作成されること
+- **依存**: なし
+- **推定時間**: 6時間
+- **ブランチ**: `feature/database-schema-extension`
+
+#### Task 4.1.4: TokenManager実装
+- [ ] Gemini API月100万トークン制限管理実装
+- [ ] 使用量記録・追跡機能
+- [ ] 90%/95%/100%段階制限機能
+- [ ] トークン消費量予測機能
+- [ ] アラート・通知機能
+- **完了条件**: トークン制限が正常に機能すること
+- **依存**: Task 4.1.3
+- **推定時間**: 8時間
+- **ブランチ**: `feature/token-manager`
+
+#### Task 4.1.5: EmbeddingService (Gemini API統合)
+- [ ] Gemini API クライアント実装
+- [ ] text-embedding-004 モデル統合
+- [ ] バッチ埋め込み処理実装
+- [ ] エラーハンドリング・リトライ機能
+- [ ] キャッシュ機能実装
+- **完了条件**: Gemini API埋め込み生成が正常に動作すること
+- **依存**: Task 4.1.2, Task 4.1.4
+- **推定時間**: 12時間
+- **ブランチ**: `feature/gemini-embedding-service`
+
+#### Task 4.1.6: ChromaDBService実装
+- [ ] ChromaDB in-process統合実装
+- [ ] PersistentClient初期化とコレクション管理
+- [ ] ドキュメント追加・更新・削除機能
+- [ ] ベクトル検索機能実装
+- [ ] Railway永続化対応（Persistent Volumes）
+- **完了条件**: ChromaDB操作が全て正常に動作すること
+- **依存**: Task 4.1.2
+- **推定時間**: 10時間
+- **ブランチ**: `feature/chromadb-service`
+
+#### Task 4.1.7: Railway Persistent Volumes設定・検証
+- [ ] railway.toml設定更新
+- [ ] Dockerfile永続化対応修正
+- [ ] データディレクトリ権限設定
+- [ ] 起動時整合性チェック実装
+- [ ] バックアップ・復元機能基盤
+- **完了条件**: Railway環境でデータが永続化されること
+- **依存**: Task 4.1.6
+- **推定時間**: 6時間
+- **ブランチ**: `ci/railway-persistent-volumes`
+
+#### Task 4.1.8: SyncManager基本機能
+- [ ] SQLite-ChromaDB同期管理実装
+- [ ] ノート変更時の自動同期
+- [ ] データ整合性チェック機能
+- [ ] 一括同期（bulk_sync）実装
+- [ ] 同期エラー処理・復旧機能
+- **完了条件**: SQLite-ChromaDB間のデータ同期が正常に動作すること
+- **依存**: Task 4.1.3, Task 4.1.5, Task 4.1.6
+- **推定時間**: 12時間
+- **ブランチ**: `feature/sync-manager-basic`
+
+#### Phase 4.2: PKM機能実装（週4-6）
+
+#### Task 4.2.1: KnowledgeManager中核実装
+- [ ] 個人知識管理の中核クラス実装
+- [ ] ノートCRUD操作（create_note, update_note, delete_note）
+- [ ] リンク抽出機能（[[note_name]]パターン）
+- [ ] タグ管理機能
+- [ ] ObsidianGitHubService統合（GitHub保存）
+- **完了条件**: 基本的なノート管理が全て動作すること
+- **依存**: Task 4.1.1, Task 4.1.5, Task 4.1.6, Task 4.1.8
+- **推定時間**: 16時間
+- **ブランチ**: `feature/knowledge-manager-core`
+
+#### Task 4.2.2: SearchEngine基本実装
+- [ ] ベクトル検索機能実装
+- [ ] FTS5キーワード検索機能実装
+- [ ] 基本検索結果統合
+- [ ] 検索結果ランキング機能
+- [ ] 検索履歴管理
+- **完了条件**: ベクトル・キーワード検索が正常に動作すること
+- **依存**: Task 4.2.1
+- **推定時間**: 12時間
+- **ブランチ**: `feature/search-engine-basic`
+
+#### Task 4.2.3: PKMCog基本コマンド実装
+- [ ] /note コマンド実装（ノート作成）
+- [ ] /search コマンド実装（基本検索）
+- [ ] /list コマンド実装（ノート一覧）
+- [ ] Discord UI実装（Embed, View）
+- [ ] エラーハンドリング・ユーザーフィードバック
+- **完了条件**: 基本PKMコマンドが全て動作すること
+- **依存**: Task 4.2.1, Task 4.2.2
+- **推定時間**: 14時間
+- **ブランチ**: `feature/pkm-basic-commands`
+
+#### Task 4.2.4: ハイブリッド検索実装
+- [ ] RRF (Reciprocal Rank Fusion) アルゴリズム実装
+- [ ] ベクトル・キーワード検索結果の重み付け統合
+- [ ] 検索精度調整・チューニング機能
+- [ ] 検索モード選択（vector/keyword/hybrid）
+- [ ] パフォーマンス最適化
+- **完了条件**: ハイブリッド検索で高精度な結果が得られること
+- **依存**: Task 4.2.2
+- **推定時間**: 10時間
+- **ブランチ**: `feature/hybrid-search-rrf`
+
+#### Task 4.2.5: ノートリンク機能実装
+- [ ] [[note_name]]リンク解析・検証
+- [ ] 双方向リンク管理
+- [ ] リンク先ノート自動検索・提案
+- [ ] リンクグラフ可視化（基本）
+- [ ] 孤立ノート検出機能
+- **完了条件**: ノート間リンクが正常に機能すること
+- **依存**: Task 4.2.1
+- **推定時間**: 8時間
+- **ブランチ**: `feature/note-links`
+
+#### Task 4.2.6: Gemini Audio API移行 (VoiceCog統合)
+- [ ] Gemini 1.5 Pro音声転写統合
+- [ ] OpenAI Whisper→Gemini移行実装
+- [ ] アダプター層実装（段階的切り替え）
+- [ ] VoicecogのGemini統合
+- [ ] 音声→自動PKMノート化機能
+- **完了条件**: Gemini音声転写が正常に動作すること
+- **依存**: Task 4.1.5, Task 4.2.1
+- **推定時間**: 10時間
+- **ブランチ**: `feature/gemini-audio-migration`
+
+#### Phase 4.3: 高度機能・最適化（週7-9）
+
+#### Task 4.3.1: /merge コマンド実装
+- [ ] 複数ノート選択UI実装
+- [ ] Gemini APIによる知的統合処理
+- [ ] 類似ノート自動検出・提案
+- [ ] 統合結果のプレビュー・編集機能
+- [ ] 統合履歴管理
+- **完了条件**: ノート統合が高品質で動作すること
+- **依存**: Task 4.2.1, Task 4.2.4
+- **推定時間**: 14時間
+- **ブランチ**: `feature/merge-command`
+
+#### Task 4.3.2: 自動タグ付け・カテゴリ化
+- [ ] Gemini APIによる自動タグ抽出
+- [ ] 既存タグとの統合・正規化
+- [ ] カテゴリ階層管理
+- [ ] タグ推薦システム
+- [ ] タグベース検索フィルター
+- **完了条件**: 自動タグ付けが実用的レベルで動作すること
+- **依存**: Task 4.2.1
+- **推定時間**: 10時間
+- **ブランチ**: `feature/auto-tagging`
+
+#### Task 4.3.3: Fleeting Note処理拡張
+- [ ] 音声メッセージ自動PKM化
+- [ ] FleetingNoteView拡張（PKM統合）
+- [ ] 自動関連ノート検索・提案
+- [ ] Fleeting→Permanent変換支援
+- [ ] メタデータ自動抽出
+- **完了条件**: 音声からのPKM化が自動で動作すること
+- **依存**: Task 4.2.6, Task 4.3.2
+- **推定時間**: 8時間
+- **ブランチ**: `feature/enhanced-fleeting-notes`
+
+#### Task 4.3.4: バッチ処理最適化
+- [ ] 大量ノート一括埋め込み処理
+- [ ] ChromaDBバッチ操作最適化
+- [ ] メモリ使用量最適化
+- [ ] 並列処理実装
+- [ ] 処理進捗表示・キャンセル機能
+- **完了条件**: 大量データ処理が効率的に動作すること
+- **依存**: Task 4.2.1, Task 4.2.4
+- **推定時間**: 8時間
+- **ブランチ**: `refactor/batch-processing`
+
+#### Task 4.3.5: API制限時フォールバック機能
+- [ ] 段階的機能制限システム実装
+- [ ] ローカルキャッシュ活用機能
+- [ ] 使用量閾値監視・アラート
+- [ ] 手動モード・緊急時対応
+- [ ] 制限状況UI表示
+- **完了条件**: API制限時でも基本機能が維持されること
+- **依存**: Task 4.1.4
+- **推定時間**: 10時間
+- **ブランチ**: `feature/api-fallback-system`
+
+#### Phase 4.4: 品質保証・運用（週10-12）
+
+#### Task 4.4.1: Phase4Monitor・メトリクス
+- [ ] PKM機能専用監視システム実装
+- [ ] トークン使用量・検索精度メトリクス
+- [ ] システム健全性チェック
+- [ ] パフォーマンス監視
+- [ ] /stats コマンド実装（ダッシュボード）
+- **完了条件**: 包括的な監視・メトリクス機能が動作すること
+- **依存**: Task 4.1.4, Task 4.2.4
+- **推定時間**: 8時間
+- **ブランチ**: `feature/phase4-monitoring`
+
+#### Task 4.4.2: AlertManager・通知システム
+- [ ] アラート・通知システム実装
+- [ ] トークン制限・システム異常通知
+- [ ] Discord管理者通知機能
+- [ ] アラート設定・閾値管理
+- [ ] 通知履歴・分析機能
+- **完了条件**: 重要なシステム状態が適切に通知されること
+- **依存**: Task 4.4.1
+- **推定時間**: 6時間
+- **ブランチ**: `feature/alert-manager`
+
+#### Task 4.4.3: BackupManager実装
+- [ ] 日次自動バックアップシステム
+- [ ] SQLite・ChromaDBデータバックアップ
+- [ ] バックアップ世代管理・クリーンアップ
+- [ ] 災害復旧手順実装
+- [ ] バックアップ整合性チェック
+- **完了条件**: データバックアップ・復旧が確実に動作すること
+- **依存**: Task 4.1.6, Task 4.1.7
+- **推定時間**: 10時間
+- **ブランチ**: `feature/backup-manager`
+
+#### Task 4.4.4: PrivacyManager・セキュリティ強化
+- [ ] 個人情報検出・マスキング機能
+- [ ] 機密情報パターン検出
+- [ ] ローカル実行保証強化
+- [ ] データ暗号化（必要時）
+- [ ] セキュリティ監査ログ
+- **完了条件**: プライバシー・セキュリティが確保されること
+- **依存**: Task 4.2.1
+- **推定時間**: 8時間
+- **ブランチ**: `feature/privacy-manager`
+
+#### Task 4.4.5: 統合テスト・品質検証
+- [ ] Phase 4機能の包括的統合テスト
+- [ ] パフォーマンス・負荷テスト
+- [ ] API制限シナリオテスト
+- [ ] データ整合性長期テスト
+- [ ] ユーザビリティテスト
+- **完了条件**: 全機能が本番レベルで安定動作すること
+- **依存**: Task 4.4.1, Task 4.4.2, Task 4.4.3, Task 4.4.4
+- **推定時間**: 12時間
+- **ブランチ**: `test/phase4-integration`
+
+#### Task 4.4.6: ドキュメント・リリース準備
+- [ ] Phase 4機能ドキュメント作成
+- [ ] API仕様書更新
+- [ ] ユーザーマニュアル作成
+- [ ] セットアップガイド更新
+- [ ] OSS公開準備（README, CONTRIBUTING等）
+- **完了条件**: 完全なドキュメントが整備されること
+- **依存**: Task 4.4.5
+- **推定時間**: 8時間
+- **ブランチ**: `docs/phase4-documentation`
+
+#### 追加タスク（Phase 4.5: 拡張機能）
+
+#### Task 4.5.1: /edit コマンド実装
+- [ ] ノートID指定編集機能
+- [ ] ファジー検索による編集対象選択
+- [ ] インライン編集UI実装
+- [ ] 編集履歴管理
+- [ ] 変更差分表示
+- **完了条件**: ノート編集が使いやすく動作すること
+- **依存**: Task 4.2.3
+- **推定時間**: 8時間
+- **ブランチ**: `feature/edit-command`
+
+#### Task 4.5.2: /review コマンド群実装
+- [ ] /review daily - 日次レビュー機能
+- [ ] /review weekly - 週次知識整理
+- [ ] /review monthly - 月次成長分析
+- [ ] カスタム期間レビュー機能
+- [ ] レビュー結果可視化
+- **完了条件**: 定期レビュー機能が実用的に動作すること
+- **依存**: Task 4.2.3, Task 4.3.1
+- **推定時間**: 10時間
+- **ブランチ**: `feature/review-commands`
+
+### Phase 5: 運用基盤完成 + 本格運用（2週間）
+
+#### Task 5.1: VoiceCog設計
 - [ ] src/cogs/voice.pyの構造設計
 - [ ] OpenAI API統合設計
 - [ ] 音声ファイル処理フロー設計
 - [ ] エラーハンドリング設計
 - **完了条件**: 音声処理アーキテクチャが定義される
-- **依存**: Phase 3完了
+- **依存**: Phase 4完了
 - **推定時間**: 2時間
 
-#### Task 4.2: OpenAI API統合
+#### Task 5.2: OpenAI API統合
 - [ ] openai依存関係追加
 - [ ] Whisper API呼び出し実装
 - [ ] GPT API呼び出し実装
 - [ ] レート制限とエラー処理
 - **完了条件**: OpenAI APIが利用可能
-- **依存**: Task 4.1
+- **依存**: Task 5.1
 - **推定時間**: 3時間
 
-#### Task 4.3: 音声メッセージ処理
+#### Task 5.3: 音声メッセージ処理
 - [ ] 音声ファイルダウンロード処理
 - [ ] 一時ファイル管理
 - [ ] Whisper文字起こし実装
 - [ ] GPT整形処理実装
 - **完了条件**: 音声が文字起こしされる
-- **依存**: Task 4.2
+- **依存**: Task 5.2
 - **推定時間**: 4時間
 - **ブランチ**: `feature/voice-transcription`
 
-#### Task 4.4: ヘルスチェック実装
+#### Task 5.4: ヘルスチェック実装
 - [ ] /healthエンドポイント設計
 - [ ] 簡易HTTPサーバー実装
 - [ ] システム状態チェック
@@ -558,17 +869,17 @@
 - **推定時間**: 2時間
 - **ブランチ**: `feature/health-monitoring`
 
-#### Task 4.5: メトリクス収集
+#### Task 5.5: メトリクス収集
 - [ ] 実行時間記録
 - [ ] エラー率計測
 - [ ] メモリ使用量監視
 - [ ] ログへの出力
 - **完了条件**: パフォーマンスが可視化される
-- **依存**: Task 4.4
+- **依存**: Task 5.4
 - **推定時間**: 3時間
 - **ブランチ**: `feature/performance-metrics`
 
-#### Task 4.6: ドキュメント整備
+#### Task 5.6: ドキュメント整備
 - [ ] APIドキュメント生成
 - [ ] デプロイメントガイド作成
 - [ ] トラブルシューティングガイド
@@ -578,17 +889,17 @@
 - **推定時間**: 4時間
 - **ブランチ**: `docs/documentation-complete`
 
-#### Task 4.7: パフォーマンス最適化
+#### Task 5.7: パフォーマンス最適化
 - [ ] 非同期処理の最適化
 - [ ] メモリリーク調査
 - [ ] キャッシュ戦略の調整
 - [ ] データベースインデックス最適化
 - **完了条件**: 応答時間が目標値以内
-- **依存**: Task 4.5
+- **依存**: Task 5.5
 - **推定時間**: 3時間
 - **ブランチ**: `refactor/performance-optimization`
 
-#### Task 4.8: セキュリティ強化
+#### Task 5.8: セキュリティ強化
 - [ ] 入力検証の強化
 - [ ] ログマスキング実装
 - [ ] 権限管理の徹底
@@ -598,25 +909,25 @@
 - **推定時間**: 3時間
 - **ブランチ**: `refactor/security-hardening`
 
-#### Task 4.9: 本番環境テスト
+#### Task 5.9: 本番環境テスト
 - [ ] 負荷テスト実施
 - [ ] 障害復旧テスト
 - [ ] バックアップ・リストアテスト
 - [ ] モニタリング動作確認
 - **完了条件**: 本番運用の準備完了
-- **依存**: Task 4.7, Task 4.8
+- **依存**: Task 5.7, Task 5.8
 - **推定時間**: 3時間
 - **ブランチ**: `test/production-readiness`
 
-#### Task 4.10: リリース準備
+#### Task 5.10: リリース準備
 - [ ] バージョンタグ付け
 - [ ] リリースノート作成
 - [ ] デプロイメントチェックリスト
 - [ ] 運用手順書の最終確認
-- **完了条件**: v1.0.0リリース可能
-- **依存**: Task 4.9
+- **完了条件**: v2.0.0リリース可能
+- **依存**: Task 5.9
 - **推定時間**: 2時間
-- **ブランチ**: `release/v1.0.0`
+- **ブランチ**: `release/v2.0.0`
 
 ## 実装順序
 
@@ -650,6 +961,19 @@ git pull origin main
 # 新しい機能ブランチを作成（タスクリストのブランチ名を使用）
 git checkout -b feature/database-service-impl
 ```
+
+**🚨 重要: GitHub Project Issue Status更新**
+ブランチ作成と同時に、対応するIssueのステータスを更新：
+```bash
+# 対象IssueをGitHub ProjectでTodo → In Progressに変更
+# 例: Task 4.1.1開始時
+gh project item-edit --id [PROJECT_ITEM_ID] \
+  --field-id "PVTSSF_lAHOAVzM6c4BAoYLzgzYKtg" \
+  --single-select-option-id "47fc9ee4" \
+  --project-id "PVT_kwHOAVzM6c4BAoYL"
+```
+
+または、GitHub UI上でプロジェクトボードの該当IssueをTodo列からIn Progress列にドラッグ
 
 #### 2. 開発 & コミット
 ```bash
@@ -702,6 +1026,18 @@ Generated with [Claude Code](https://claude.ai/code)"
 - コードレビュー実施（セルフレビューまたはペアレビュー）
 - CIが成功したらmainにマージ
 - ブランチ削除
+
+**🚨 重要: 完了時のGitHub Project Status更新**
+PRマージ完了と同時に、IssueステータスをDoneに更新：
+```bash
+# マージ完了後、In Progress → Doneに変更
+gh project item-edit --id [PROJECT_ITEM_ID] \
+  --field-id "PVTSSF_lAHOAVzM6c4BAoYLzgzYKtg" \
+  --single-select-option-id "98236657" \
+  --project-id "PVT_kwHOAVzM6c4BAoYL"
+```
+
+または、GitHub UI上でプロジェクトボードの該当IssueをIn Progress列からDone列にドラッグ
 
 ### 並行開発の管理
 

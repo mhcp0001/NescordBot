@@ -167,7 +167,10 @@
       "Bash(gh pr ready:*)",
       "Bash(poetry run coverage run:*)",
       "Bash(poetry run coverage:*)",
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "mcp__github__list_issues",
+      "mcp__gemini-yusukedev__gemini_chat_flash",
+      "Bash(gh project:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
