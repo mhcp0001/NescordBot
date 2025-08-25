@@ -14,6 +14,8 @@ from typing import Any, Dict, List, Optional
 
 import aiosqlite
 
+from .migrations import DatabaseMigrationManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,6 +149,7 @@ class DatabaseService(IDataStore):
         self.connection: Optional[aiosqlite.Connection] = None
         self._lock = asyncio.Lock()
         self._initialized = False
+        self._migration_manager = DatabaseMigrationManager(self.db_path)
 
     @property
     def is_initialized(self) -> bool:
@@ -193,6 +196,11 @@ class DatabaseService(IDataStore):
                 )
 
                 await self.connection.commit()
+
+                # Run migrations to latest version
+                migration_result = await self._migration_manager.migrate_to_latest()
+                logger.info(f"Database migrations: {migration_result}")
+
                 self._initialized = True
 
                 logger.info(f"Database initialized: {self.db_path}")
@@ -374,12 +382,16 @@ class DatabaseService(IDataStore):
                     if db_file.exists():
                         db_size = db_file.stat().st_size
 
+                # Get migration status
+                migration_status = await self._migration_manager.get_migration_status()
+
                 return {
                     "total_keys": total_keys,
                     "db_path": self.db_path,
                     "db_size_bytes": db_size,
                     "is_memory": self.db_path == ":memory:",
                     "is_initialized": self._initialized,
+                    "migrations": migration_status,
                 }
 
             except Exception as e:
@@ -389,6 +401,191 @@ class DatabaseService(IDataStore):
     def get_connection(self):
         """Get a context manager for the database connection."""
         return DatabaseConnectionManager(self)
+
+    async def search_notes(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Search knowledge notes using FTS5 or fallback to LIKE search."""
+        if not self.is_initialized or self.connection is None:
+            raise RuntimeError("Database not initialized")
+
+        async with self._lock:
+            try:
+                # Check if FTS5 table exists
+                cursor = await self.connection.execute(
+                    """
+                    SELECT name FROM sqlite_master
+                    WHERE type='table' AND name='knowledge_notes_fts'
+                """
+                )
+                fts_exists = await cursor.fetchone()
+                await cursor.close()
+
+                if fts_exists:
+                    # Use FTS5 search
+                    cursor = await self.connection.execute(
+                        """
+                        SELECT kn.id, kn.title, kn.content, kn.tags, kn.source_type,
+                               kn.created_at, kn.updated_at, fts.rank
+                        FROM knowledge_notes_fts fts
+                        JOIN knowledge_notes kn ON kn.rowid = fts.rowid
+                        WHERE knowledge_notes_fts MATCH ?
+                        ORDER BY fts.rank
+                        LIMIT ?
+                    """,
+                        (query, limit),
+                    )
+                else:
+                    # Fallback to LIKE search
+                    search_pattern = f"%{query}%"
+                    cursor = await self.connection.execute(
+                        """
+                        SELECT id, title, content, tags, source_type,
+                               created_at, updated_at, 0 as rank
+                        FROM knowledge_notes
+                        WHERE title LIKE ? OR content LIKE ? OR tags LIKE ?
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                    """,
+                        (search_pattern, search_pattern, search_pattern, limit),
+                    )
+
+                rows = await cursor.fetchall()
+                await cursor.close()
+
+                results = []
+                for row in rows:
+                    id, title, content, tags, source_type, created_at, updated_at, rank = row
+                    results.append(
+                        {
+                            "id": id,
+                            "title": title,
+                            "content": content,
+                            "tags": json.loads(tags) if tags else [],
+                            "source_type": source_type,
+                            "created_at": created_at,
+                            "updated_at": updated_at,
+                            "rank": rank,
+                        }
+                    )
+
+                return results
+
+            except Exception as e:
+                logger.error(f"Failed to search notes: {e}")
+                raise
+
+    async def get_note_links(self, note_id: str) -> Dict[str, List[Dict[str, Any]]]:
+        """Get incoming and outgoing links for a note."""
+        if not self.is_initialized or self.connection is None:
+            raise RuntimeError("Database not initialized")
+
+        async with self._lock:
+            try:
+                # Get outgoing links (from this note)
+                cursor = await self.connection.execute(
+                    """
+                    SELECT nl.to_note_id, nl.link_type, nl.created_at, kn.title
+                    FROM note_links nl
+                    JOIN knowledge_notes kn ON kn.id = nl.to_note_id
+                    WHERE nl.from_note_id = ?
+                    ORDER BY nl.created_at DESC
+                """,
+                    (note_id,),
+                )
+
+                outgoing_rows = await cursor.fetchall()
+                await cursor.close()
+
+                # Get incoming links (to this note)
+                cursor = await self.connection.execute(
+                    """
+                    SELECT nl.from_note_id, nl.link_type, nl.created_at, kn.title
+                    FROM note_links nl
+                    JOIN knowledge_notes kn ON kn.id = nl.from_note_id
+                    WHERE nl.to_note_id = ?
+                    ORDER BY nl.created_at DESC
+                """,
+                    (note_id,),
+                )
+
+                incoming_rows = await cursor.fetchall()
+                await cursor.close()
+
+                def format_links(rows):
+                    return [
+                        {
+                            "note_id": row[0],
+                            "link_type": row[1],
+                            "created_at": row[2],
+                            "title": row[3],
+                        }
+                        for row in rows
+                    ]
+
+                return {
+                    "outgoing": format_links(outgoing_rows),
+                    "incoming": format_links(incoming_rows),
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to get note links: {e}")
+                raise
+
+    async def get_token_usage_stats(
+        self, user_id: Optional[str] = None, days: int = 30
+    ) -> Dict[str, Any]:
+        """Get token usage statistics."""
+        if not self.is_initialized or self.connection is None:
+            raise RuntimeError("Database not initialized")
+
+        async with self._lock:
+            try:
+                base_query = """
+                    SELECT api_type, operation,
+                           SUM(token_count) as total_tokens,
+                           COUNT(*) as request_count
+                    FROM token_usage
+                    WHERE timestamp >= datetime('now', '-{} days')
+                """.format(
+                    days
+                )
+
+                params = []
+                if user_id:
+                    base_query += " AND user_id = ?"
+                    params.append(user_id)
+
+                base_query += " GROUP BY api_type, operation ORDER BY total_tokens DESC"
+
+                cursor = await self.connection.execute(base_query, params)
+                rows = await cursor.fetchall()
+                await cursor.close()
+
+                usage_by_type: Dict[str, Dict[str, Dict[str, int]]] = {}
+                total_tokens = 0
+                total_requests = 0
+
+                for row in rows:
+                    api_type, operation, tokens, requests = row
+
+                    if api_type not in usage_by_type:
+                        usage_by_type[api_type] = {}
+
+                    usage_by_type[api_type][operation] = {"tokens": tokens, "requests": requests}
+
+                    total_tokens += tokens
+                    total_requests += requests
+
+                return {
+                    "period_days": days,
+                    "user_id": user_id,
+                    "total_tokens": total_tokens,
+                    "total_requests": total_requests,
+                    "usage_by_type": usage_by_type,
+                }
+
+            except Exception as e:
+                logger.error(f"Failed to get token usage stats: {e}")
+                raise
 
 
 class DatabaseConnectionManager:
