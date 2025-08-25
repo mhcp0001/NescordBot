@@ -8,6 +8,7 @@ and infrastructure operations for the bot.
 from ..security import SecurityValidator
 from .batch_processor import BatchProcessor, GitHubIntegratedQueue
 from .database import DatabaseService, IDataStore
+from .embedding import EmbeddingResult, EmbeddingService, EmbeddingServiceError
 from .git_operations import FileOperation, GitOperationService
 from .github import GitHubService
 from .github_auth import GitHubAuthManager
@@ -26,6 +27,9 @@ from .service_container import (
 __all__ = [
     "DatabaseService",
     "IDataStore",
+    "EmbeddingService",
+    "EmbeddingResult",
+    "EmbeddingServiceError",
     "GitHubService",
     "PersistentQueue",
     "FileRequest",

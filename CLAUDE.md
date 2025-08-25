@@ -160,12 +160,45 @@ gh pr merge --auto --squash --delete-branch
 # Results in: PR merged → Issue closed → Branch deleted → Project updated
 ```
 
-### Branch Naming Convention
+### Branch Strategy
+
+#### Individual Issue Branches (Basic)
 - **Format**: `type/issue-number-description`
 - **Examples**:
   - `feature/123-admin-commands`
   - `fix/456-voice-api-error`
   - `docs/789-update-readme`
+
+#### Phase Integration Strategy (Advanced) - 2025-08-25追加
+大規模機能開発時の推奨戦略：
+
+**ブランチ構造:**
+```
+main
+├── feature/phaseX                    # Phase統合ブランチ
+    ├── feature/95-service-container  # 個別Issue
+    ├── feature/96-botconfig-phase4   # 個別Issue
+    ├── feature/97-gemini-service     # 個別Issue
+    └── feature/118-integration-test  # 統合テスト
+```
+
+**ワークフロー:**
+```bash
+# 1. Phase統合ブランチ作成
+git checkout -b feature/phase4 main
+
+# 2. Issue開発完了後、Phaseブランチにマージ
+git checkout feature/phase4
+git merge feature/95-service-container --no-ff
+
+# 3. Phase完了時、mainに一括マージ
+gh pr create --base main --head feature/phase4
+```
+
+**適用基準:**
+- 3つ以上の相互依存するIssue
+- 大型機能の段階的実装
+- 複雑な統合テストが必要な場合
 
 ### Commit Message Standard (厳格化)
 - **Format**: `type(scope): description (refs #issue-number)` **（Issue参照必須）**
@@ -206,7 +239,36 @@ test(admin): 管理者権限テストを追加 (refs #54)
 #### Projects Integration
 - **Board**: Todo → In Progress → Done
 - **Auto-movement**: Issue creation → Todo, PR creation → In Progress, PR merge → Done
+- **自動化**: `.github/workflows/project-update.yml` による完全自動更新
 - **Tracking**: `gh project item-list PROJECT_NUMBER --owner @me`
+
+#### Project自動更新システム (2025-08-25追加)
+
+GitHub Actionsによる完全自動化されたProject状態管理：
+
+**トリガー条件**:
+- **Issue作成時**: 自動的に`Todo`状態に設定
+- **PR作成時**: 関連Issueを`In Progress`状態に更新
+- **PR マージ時**: 関連Issueを`Done`状態に更新、Issueを自動クローズ
+
+**Issue番号抽出ロジック**:
+- PR本文から`Closes #123`パターンを検索
+- コミットメッセージから`(refs #123)`パターンを検索
+- PRタイトルから`#123`パターンを検索
+
+**Project定数** (NescordBot専用):
+```bash
+PROJECT_ID="PVT_kwHOAVzM6c4BAoYL"
+STATUS_FIELD_ID="PVTSSF_lAHOAVzM6c4BAoYLzgzYKtg"
+TODO_ID="f75ad846"
+IN_PROGRESS_ID="47fc9ee4"
+DONE_ID="98236657"
+```
+
+**利点**:
+- 手動でのProject更新作業が完全に不要
+- Issue→PR→マージのフロー全体でステータス同期
+- 開発者はIssue番号の参照のみを意識すれば良い
 
 #### Label Strategy
 - **Type**: `bug`, `feature`, `documentation`, `refactor`, `chore`
@@ -303,6 +365,30 @@ gh project list --owner @me
 # OR for organization
 gh project list --owner ORG_NAME
 ```
+
+### CI/CD設定改善 (2025-08-25追加)
+
+**Phase統合ブランチでのテスト実行**:
+
+`.github/workflows/ci.yml`を更新し、Phase統合ブランチ（`feature/phase*`）へのPRでもフルテストスイートが実行されるように設定：
+
+```yaml
+on:
+  push:
+    branches: [ main, develop, phase2-development ]
+  pull_request:
+    branches: [ main, develop, 'feature/phase*' ]  # Phase統合ブランチを追加
+```
+
+**テスト実行戦略**:
+- **個別featureブランチ**: テスト実行なし（リソース節約）
+- **Phase統合ブランチへのPR**: フルテストスイート実行
+- **mainブランチへのPR**: フルテストスイート + Docker統合テスト
+
+**利点**:
+- CI負荷を最適化しながら品質保証
+- Phase統合時点での問題早期発見
+- 開発効率と品質のバランス
 
 ### Quality Assurance (厳格化)
 - **MANDATORY**: All PRs must pass CI/CD checks
