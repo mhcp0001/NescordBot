@@ -79,51 +79,70 @@ Before using the automated workflow, ensure gh CLI is properly set up:
 - **Auto-Linking**: Automatic connection between branches, commits, PRs, and issues
 - **Project Status Sync**: Maintain GitHub Project board status in sync with development progress
 
-### GitHub Project Status Management
-**Status Flow**: Todo → In Progress → Done
+### 🤖 自動化されたIssue管理ライフサイクル
 
-#### Status Update Commands
+**完全自動化されたステータスフロー**: Todo → In Progress → Ready for Integration → Done
+
+#### ⚡ GitHub Actions自動処理
+以下は**全て自動化済み**のため手動操作は禁止です：
+
+```
+1. Issue作成     → 自動でプロジェクト追加 & Todo ステータス
+2. PR作成       → 自動でIn Progress ステータス
+3. CI全通過     → 自動でReady for Integration ステータス
+4. PRマージ     → 自動でIssueクローズ & Done ステータス
+```
+
+#### 🔧 システム設定値
 ```bash
-# Constants for Nescord Project
+# Nescord Project環境変数 (GitHub Actions用)
 PROJECT_ID="PVT_kwHOAVzM6c4BAoYL"
 STATUS_FIELD_ID="PVTSSF_lAHOAVzM6c4BAoYLzgzYKtg"
 TODO_ID="f75ad846"
 IN_PROGRESS_ID="47fc9ee4"
+READY_FOR_INTEGRATION_ID="0ee8d97c"  # 新規追加
 DONE_ID="98236657"
-
-# Todo → In Progress (when starting work)
-gh project item-edit --id [PROJECT_ITEM_ID] \
-  --field-id "$STATUS_FIELD_ID" \
-  --single-select-option-id "$IN_PROGRESS_ID" \
-  --project-id "$PROJECT_ID"
-
-# In Progress → Done (when PR merged)
-gh project item-edit --id [PROJECT_ITEM_ID] \
-  --field-id "$STATUS_FIELD_ID" \
-  --single-select-option-id "$DONE_ID" \
-  --project-id "$PROJECT_ID"
 ```
 
-#### Status Update Rules (Mandatory)
-1. **Branch Creation Time**: Update Issue status from Todo → In Progress
-2. **PR Merge Time**: Update Issue status from In Progress → Done
-3. **Alternative**: Use GitHub UI drag-and-drop on project board
-4. **Violation**: Any Issue not following status flow must be corrected immediately
+#### 🚫 手動操作禁止事項
+- ❌ GitHub Projectsでのステータス手動変更
+- ❌ Issueの手動クローズ（緊急時除く）
+- ❌ PRと無関係なIssue操作
 
-### Automated Issue Workflow
+#### 📋 開発者が行う作業
+1. **Issue作成** - 適切なテンプレート使用
+2. **ブランチ作成** - `feature/123-description` 形式
+3. **PR作成** - 必ず `Closes #123` を記載
+4. **CI修正** - 失敗時の修正作業のみ
+
+#### 🔍 緊急時手動操作（非推奨）
+```bash
+# 緊急時のみ使用：手動ステータス変更
+gh project item-edit --id [PROJECT_ITEM_ID] \
+  --field-id "$STATUS_FIELD_ID" \
+  --single-select-option-id "$READY_FOR_INTEGRATION_ID" \
+  --project-id "$PROJECT_ID"
+
+### 📚 関連ドキュメント
+- **詳細ガイド**: `CONTRIBUTING.md` - 開発者向け詳細ワークフロー
+- **GitHub Actions**: `.github/workflows/` - 自動化の実装詳細
+- **Issue Templates**: `.github/ISSUE_TEMPLATE/` - 標準化されたテンプレート
+
+### Automated Issue Workflow (Legacy - GitHub Actions化済み)
 
 #### 1. Issue Creation
 ```bash
-# Use templates for consistent reporting
+# 標準化されたテンプレート使用（推奨）
 gh issue create --template bug_report.md --title "Description"
 gh issue create --template feature_request.md --title "Description"
 ```
 
 #### 2. Branch Creation & Development Start
 ```bash
-# Automatic branch creation with issue linking
-gh issue develop 123 --name "type/123-description" --base main
-# Types: feature/, fix/, docs/, refactor/, test/, ci/, hotfix/
+# Issue関連ブランチ作成（手動）
+gh issue develop 123 --name "feature/123-description" --base main
+# または直接作成
+git checkout -b feature/123-description main
 ```
 
 #### 3. Commit Convention (Enhanced)
@@ -160,12 +179,45 @@ gh pr merge --auto --squash --delete-branch
 # Results in: PR merged → Issue closed → Branch deleted → Project updated
 ```
 
-### Branch Naming Convention
+### Branch Strategy
+
+#### Individual Issue Branches (Basic)
 - **Format**: `type/issue-number-description`
 - **Examples**:
   - `feature/123-admin-commands`
   - `fix/456-voice-api-error`
   - `docs/789-update-readme`
+
+#### Phase Integration Strategy (Advanced) - 2025-08-25追加
+大規模機能開発時の推奨戦略：
+
+**ブランチ構造:**
+```
+main
+├── feature/phaseX                    # Phase統合ブランチ
+    ├── feature/95-service-container  # 個別Issue
+    ├── feature/96-botconfig-phase4   # 個別Issue
+    ├── feature/97-gemini-service     # 個別Issue
+    └── feature/118-integration-test  # 統合テスト
+```
+
+**ワークフロー:**
+```bash
+# 1. Phase統合ブランチ作成
+git checkout -b feature/phase4 main
+
+# 2. Issue開発完了後、Phaseブランチにマージ
+git checkout feature/phase4
+git merge feature/95-service-container --no-ff
+
+# 3. Phase完了時、mainに一括マージ
+gh pr create --base main --head feature/phase4
+```
+
+**適用基準:**
+- 3つ以上の相互依存するIssue
+- 大型機能の段階的実装
+- 複雑な統合テストが必要な場合
 
 ### Commit Message Standard (厳格化)
 - **Format**: `type(scope): description (refs #issue-number)` **（Issue参照必須）**
@@ -206,7 +258,36 @@ test(admin): 管理者権限テストを追加 (refs #54)
 #### Projects Integration
 - **Board**: Todo → In Progress → Done
 - **Auto-movement**: Issue creation → Todo, PR creation → In Progress, PR merge → Done
+- **自動化**: `.github/workflows/project-update.yml` による完全自動更新
 - **Tracking**: `gh project item-list PROJECT_NUMBER --owner @me`
+
+#### Project自動更新システム (2025-08-25追加)
+
+GitHub Actionsによる完全自動化されたProject状態管理：
+
+**トリガー条件**:
+- **Issue作成時**: 自動的に`Todo`状態に設定
+- **PR作成時**: 関連Issueを`In Progress`状態に更新
+- **PR マージ時**: 関連Issueを`Done`状態に更新、Issueを自動クローズ
+
+**Issue番号抽出ロジック**:
+- PR本文から`Closes #123`パターンを検索
+- コミットメッセージから`(refs #123)`パターンを検索
+- PRタイトルから`#123`パターンを検索
+
+**Project定数** (NescordBot専用):
+```bash
+PROJECT_ID="PVT_kwHOAVzM6c4BAoYL"
+STATUS_FIELD_ID="PVTSSF_lAHOAVzM6c4BAoYLzgzYKtg"
+TODO_ID="f75ad846"
+IN_PROGRESS_ID="47fc9ee4"
+DONE_ID="98236657"
+```
+
+**利点**:
+- 手動でのProject更新作業が完全に不要
+- Issue→PR→マージのフロー全体でステータス同期
+- 開発者はIssue番号の参照のみを意識すれば良い
 
 #### Label Strategy
 - **Type**: `bug`, `feature`, `documentation`, `refactor`, `chore`
@@ -303,6 +384,30 @@ gh project list --owner @me
 # OR for organization
 gh project list --owner ORG_NAME
 ```
+
+### CI/CD設定改善 (2025-08-25追加)
+
+**Phase統合ブランチでのテスト実行**:
+
+`.github/workflows/ci.yml`を更新し、Phase統合ブランチ（`feature/phase*`）へのPRでもフルテストスイートが実行されるように設定：
+
+```yaml
+on:
+  push:
+    branches: [ main, develop, phase2-development ]
+  pull_request:
+    branches: [ main, develop, 'feature/phase*' ]  # Phase統合ブランチを追加
+```
+
+**テスト実行戦略**:
+- **個別featureブランチ**: テスト実行なし（リソース節約）
+- **Phase統合ブランチへのPR**: フルテストスイート実行
+- **mainブランチへのPR**: フルテストスイート + Docker統合テスト
+
+**利点**:
+- CI負荷を最適化しながら品質保証
+- Phase統合時点での問題早期発見
+- 開発効率と品質のバランス
 
 ### Quality Assurance (厳格化)
 - **MANDATORY**: All PRs must pass CI/CD checks

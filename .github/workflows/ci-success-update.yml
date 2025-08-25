@@ -1,0 +1,183 @@
+name: Update Project Status on CI Success
+
+on:
+  workflow_run:
+    workflows: ["CI", "Claude Code Review"]  # CI完了をトリガー
+    types:
+      - completed
+
+env:
+  PROJECT_ID: "PVT_kwHOAVzM6c4BAoYL"
+  STATUS_FIELD_ID: "PVTSSF_lAHOAVzM6c4BAoYLzgzYKtg"
+  READY_FOR_INTEGRATION_ID: "0ee8d97c"
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  projects: write
+
+jobs:
+  update-status-on-ci-success:
+    runs-on: ubuntu-latest
+    # CI成功時のみ実行
+    if: github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Check if PR exists and get issue info
+        id: get-pr-info
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // workflow_runからPR情報を取得
+            const runId = context.payload.workflow_run.id;
+            const headSha = context.payload.workflow_run.head_sha;
+
+            // 同じcommit shaのPRを検索
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              sort: 'updated',
+              direction: 'desc'
+            });
+
+            const matchingPR = prs.data.find(pr => pr.head.sha === headSha);
+
+            if (!matchingPR) {
+              console.log('No matching PR found for this CI run');
+              return;
+            }
+
+            console.log(`Found matching PR: #${matchingPR.number}`);
+
+            // PRからIssue番号を抽出
+            const prBody = matchingPR.body || '';
+            const prTitle = matchingPR.title || '';
+
+            // "Closes #number", "refs #number" パターンを検索
+            const patterns = [
+              /(?:Closes|closes|Fixes|fixes|Resolves|resolves)\s+#(\d+)/,
+              /\(refs #(\d+)\)/,
+              /#(\d+)/
+            ];
+
+            let issueNumber = null;
+            for (const pattern of patterns) {
+              const match = prBody.match(pattern) || prTitle.match(pattern);
+              if (match) {
+                issueNumber = parseInt(match[1]);
+                console.log(`Found issue reference: #${issueNumber}`);
+                break;
+              }
+            }
+
+            if (!issueNumber) {
+              console.log('No issue reference found in PR');
+              return;
+            }
+
+            // Issueの詳細を取得
+            try {
+              const issue = await github.rest.issues.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber
+              });
+
+              core.setOutput('issue-number', issueNumber);
+              core.setOutput('issue-node-id', issue.data.node_id);
+              core.setOutput('pr-number', matchingPR.number);
+
+            } catch (error) {
+              console.log(`Issue #${issueNumber} not found: ${error.message}`);
+              return;
+            }
+
+      - name: Update project status to Ready for Integration
+        if: steps.get-pr-info.outputs.issue-node-id
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNodeId = '${{ steps.get-pr-info.outputs.issue-node-id }}';
+            const issueNumber = '${{ steps.get-pr-info.outputs.issue-number }}';
+            const prNumber = '${{ steps.get-pr-info.outputs.pr-number }}';
+
+            // 1. Issueがプロジェクトに含まれているかチェック
+            const projectItemQuery = `
+              query($issueNodeId: ID!) {
+                node(id: $issueNodeId) {
+                  ... on Issue {
+                    projectItems(first: 10) {
+                      nodes {
+                        id
+                        project {
+                          id
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            `;
+
+            const projectItemsResult = await github.graphql(projectItemQuery, {
+              issueNodeId: issueNodeId
+            });
+
+            const projectItem = projectItemsResult.node.projectItems.nodes.find(
+              item => item.project.id === process.env.PROJECT_ID
+            );
+
+            if (!projectItem) {
+              console.log(`Issue #${issueNumber} is not in the target project`);
+              return;
+            }
+
+            console.log(`Found project item: ${projectItem.id}`);
+
+            // 2. ステータスを "Ready for Integration" に更新
+            const updateStatusMutation = `
+              mutation($project: ID!, $item: ID!, $field: ID!, $value: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $project,
+                  itemId: $item,
+                  fieldId: $field,
+                  value: { singleSelectOptionId: $value }
+                }) {
+                  item {
+                    id
+                  }
+                }
+              }
+            `;
+
+            try {
+              await github.graphql(updateStatusMutation, {
+                project: process.env.PROJECT_ID,
+                item: projectItem.id,
+                field: process.env.STATUS_FIELD_ID,
+                value: process.env.READY_FOR_INTEGRATION_ID
+              });
+
+              console.log(`✅ Updated Issue #${issueNumber} (PR #${prNumber}) to "Ready for Integration"`);
+
+              // PR にコメントを追加（オプション）
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: `🎉 **CI Passed!** \n\nIssue #${issueNumber} has been automatically moved to "Ready for Integration" status. This PR is now ready for review and merge.`
+              });
+
+            } catch (error) {
+              console.error(`Failed to update project status: ${error.message}`);
+              throw error;
+            }
+
+      - name: Log completion
+        if: steps.get-pr-info.outputs.issue-node-id
+        run: |
+          echo "✅ Successfully updated project status for Issue #${{ steps.get-pr-info.outputs.issue-number }}"
+          echo "   PR: #${{ steps.get-pr-info.outputs.pr-number }}"
+          echo "   Status: Ready for Integration"
