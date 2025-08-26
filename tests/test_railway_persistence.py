@@ -43,8 +43,8 @@ class TestChromaDBPersistence:
     @pytest.mark.asyncio
     async def test_verify_persistence_directory_missing(self, temp_config):
         """Test persistence verification when directory is missing."""
-        # Set non-existent directory
-        temp_config.chromadb_persist_directory = "/non/existent/path"
+        # Set non-existent directory in temp space to avoid permission issues
+        temp_config.chromadb_persist_directory = "/tmp/non_existent_test_directory_12345"
 
         with patch("src.nescordbot.services.chromadb_service.chromadb"):
             service = ChromaDBService(temp_config)
