@@ -173,7 +173,9 @@
       "Bash(gh project:*)",
       "Bash(git merge:*)",
       "mcp__github__get_issue",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(gh auth:*)",
+      "Bash(git branch:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",

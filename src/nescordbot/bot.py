@@ -25,6 +25,7 @@ from .services import (
     GitOperationService,
     NoteProcessingService,
     ObsidianGitHubService,
+    TokenManager,
     create_service_container,
 )
 
@@ -416,8 +417,15 @@ class NescordBot(commands.Bot):
 
             self.service_container.register_factory(ChromaDBService, create_chromadb_service)
 
+            # Register TokenManager factory
+            def create_token_manager() -> TokenManager:
+                return TokenManager(self.config, self.database_service)
+
+            self.service_container.register_factory(TokenManager, create_token_manager)
+
             self.logger.info(
-                "ServiceContainer initialized with EmbeddingService and ChromaDBService"
+                "ServiceContainer initialized with EmbeddingService, "
+                "ChromaDBService, and TokenManager"
             )
 
         except Exception as e:

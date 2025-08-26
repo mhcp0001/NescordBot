@@ -130,12 +130,40 @@ gh project item-edit --id [PROJECT_ITEM_ID] \
 
 ### Automated Issue Workflow (Legacy - GitHub Actions化済み)
 
-#### 1. Issue Creation
+#### 1. Issue Creation with Automatic Project Assignment
 ```bash
-# 標準化されたテンプレート使用（推奨）
-gh issue create --template bug_report.md --title "Description"
-gh issue create --template feature_request.md --title "Description"
+# 🎯 推奨: 自動プロジェクト追加（完全に安定動作）
+gh issue create \
+  --project "Nescord project" \
+  --template feature_request.md \
+  --title "feat: 新機能名" \
+  --body "詳細な説明"
+
+# または直接作成（テンプレートなし）
+gh issue create \
+  --project "Nescord project" \
+  --title "feat: 機能名" \
+  --body "$(cat <<'EOF'
+## 概要
+機能の説明
+
+## 実装内容
+- [ ] タスク1
+- [ ] タスク2
+
+## 完了条件
+期待される結果
+
+## 推定時間
+X時間
+EOF
+)"
 ```
+
+**✅ 安定性確認済み**:
+- GitHub CLI v2.76.2で完全動作
+- プロジェクト名 `"Nescord project"` を使用（番号は不可）
+- 作成されたIssueは自動的にTodoステータスに設定
 
 #### 2. Branch Creation & Development Start
 ```bash
