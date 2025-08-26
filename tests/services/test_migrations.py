@@ -362,8 +362,8 @@ class TestIndividualMigrations:
         # Test data insertion
         await connection.execute(
             """
-            INSERT INTO token_usage (api_type, operation, token_count, user_id)
-            VALUES ('gemini', 'embedding', 1000, 'user1')
+            INSERT INTO token_usage (provider, model, input_tokens, output_tokens, user_id)
+            VALUES ('gemini', 'gemini-pro', 500, 500, 'user1')
         """
         )
         await connection.commit()
@@ -606,20 +606,20 @@ class TestDatabaseServiceIntegration:
         # Insert test usage data
         await service.connection.execute(
             """
-            INSERT INTO token_usage (api_type, operation, token_count, user_id)
-            VALUES ('gemini', 'embedding', 1000, 'user1')
+            INSERT INTO token_usage (provider, model, input_tokens, output_tokens, user_id)
+            VALUES ('gemini', 'gemini-pro', 500, 500, 'user1')
         """
         )
         await service.connection.execute(
             """
-            INSERT INTO token_usage (api_type, operation, token_count, user_id)
-            VALUES ('gemini', 'transcription', 2000, 'user1')
+            INSERT INTO token_usage (provider, model, input_tokens, output_tokens, user_id)
+            VALUES ('gemini', 'gemini-1.5-pro', 1000, 1000, 'user1')
         """
         )
         await service.connection.execute(
             """
-            INSERT INTO token_usage (api_type, operation, token_count, user_id)
-            VALUES ('openai', 'transcription', 500, 'user2')
+            INSERT INTO token_usage (provider, model, input_tokens, output_tokens, user_id)
+            VALUES ('openai', 'gpt-3.5-turbo', 250, 250, 'user2')
         """
         )
         await service.connection.commit()

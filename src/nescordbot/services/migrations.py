@@ -179,13 +179,15 @@ class CreateTokenUsageMigration(Migration):
             """
             CREATE TABLE IF NOT EXISTS token_usage (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                api_type TEXT NOT NULL,
-                operation TEXT NOT NULL,
-                token_count INTEGER NOT NULL,
                 provider TEXT NOT NULL,
+                model TEXT NOT NULL,
+                input_tokens INTEGER NOT NULL,
+                output_tokens INTEGER NOT NULL,
+                cost_usd REAL,
                 user_id TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                metadata TEXT
+                request_type TEXT,
+                metadata TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """
         )
@@ -193,8 +195,8 @@ class CreateTokenUsageMigration(Migration):
         # Create indexes
         await connection.execute(
             """
-            CREATE INDEX IF NOT EXISTS idx_token_usage_api_type
-            ON token_usage(api_type)
+            CREATE INDEX IF NOT EXISTS idx_token_usage_provider
+            ON token_usage(provider)
         """
         )
 
@@ -214,18 +216,18 @@ class CreateTokenUsageMigration(Migration):
 
         await connection.execute(
             """
-            CREATE INDEX IF NOT EXISTS idx_token_usage_provider
-            ON token_usage(provider)
+            CREATE INDEX IF NOT EXISTS idx_token_usage_model
+            ON token_usage(model)
         """
         )
 
     async def down(self, connection: aiosqlite.Connection) -> None:
         """Drop token_usage table."""
         await connection.execute("DROP TABLE IF EXISTS token_usage")
-        await connection.execute("DROP INDEX IF EXISTS idx_token_usage_api_type")
+        await connection.execute("DROP INDEX IF EXISTS idx_token_usage_provider")
         await connection.execute("DROP INDEX IF EXISTS idx_token_usage_timestamp")
         await connection.execute("DROP INDEX IF EXISTS idx_token_usage_user_id")
-        await connection.execute("DROP INDEX IF EXISTS idx_token_usage_provider")
+        await connection.execute("DROP INDEX IF EXISTS idx_token_usage_model")
 
 
 class ExtendTranscriptionsMigration(Migration):
