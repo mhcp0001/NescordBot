@@ -175,7 +175,8 @@
       "mcp__github__get_issue",
       "Bash(git stash:*)",
       "Bash(gh auth:*)",
-      "Bash(git branch:*)"
+      "Bash(git branch:*)",
+      "Bash(gh pr status:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
