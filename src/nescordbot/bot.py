@@ -23,6 +23,7 @@ from .services import (
     GitHubAuthManager,
     GitHubService,
     GitOperationService,
+    KnowledgeManager,
     NoteProcessingService,
     ObsidianGitHubService,
     SyncManager,
@@ -435,9 +436,27 @@ class NescordBot(commands.Bot):
 
             self.service_container.register_factory(SyncManager, create_sync_manager)
 
+            # KnowledgeManager factory
+            def create_knowledge_manager() -> KnowledgeManager:
+                database_service = self.database_service
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                embedding_service = self.service_container.get_service(EmbeddingService)
+                sync_manager = self.service_container.get_service(SyncManager)
+                obsidian_github_service = self.service_container.get_service(ObsidianGitHubService)
+                return KnowledgeManager(
+                    self.config,
+                    database_service,
+                    chromadb_service,
+                    embedding_service,
+                    sync_manager,
+                    obsidian_github_service,
+                )
+
+            self.service_container.register_factory(KnowledgeManager, create_knowledge_manager)
+
             self.logger.info(
                 "ServiceContainer initialized with EmbeddingService, "
-                "ChromaDBService, TokenManager, and SyncManager"
+                "ChromaDBService, TokenManager, SyncManager, and KnowledgeManager"
             )
 
         except Exception as e:
