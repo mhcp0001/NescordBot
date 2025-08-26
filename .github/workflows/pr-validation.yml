@@ -130,10 +130,71 @@ jobs:
 
             console.log('✅ PR title follows conventional commit format');
 
+      - name: Validate branch name and PR target
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const headBranch = pr.head.ref;
+            const baseBranch = pr.base.ref;
+
+            console.log(`Branch: ${headBranch} → ${baseBranch}`);
+
+            // Check branch naming convention
+            const validBranchPattern = /^(feature|fix|docs|refactor|test|chore)\/\d+-[\w-]+$/;
+
+            if (!validBranchPattern.test(headBranch)) {
+              core.setFailed(
+                `❌ Branch name "${headBranch}" does not follow naming convention.\n` +
+                'Required format: type/issue-number-description\n' +
+                'Examples:\n' +
+                '  feature/123-admin-commands\n' +
+                '  fix/456-voice-api-error\n' +
+                '  docs/789-update-readme\n' +
+                '\nSee CLAUDE.md for complete branch strategy.'
+              );
+              return;
+            }
+
+            // Extract issue number from branch name for Phase integration check
+            const issueMatch = headBranch.match(/\/(\d+)-/);
+            const issueNumber = issueMatch ? parseInt(issueMatch[1]) : null;
+
+            // Check PR target based on issue type and Phase integration strategy
+            let expectedTarget = 'main'; // Default target
+
+            // Phase 4 tasks should target feature/phase4
+            if (issueNumber && issueNumber >= 95 && issueNumber <= 121) {
+              expectedTarget = 'feature/phase4';
+            }
+
+            if (baseBranch !== expectedTarget) {
+              let errorMsg = `❌ PR target "${baseBranch}" is incorrect for this branch.\n`;
+
+              if (expectedTarget === 'feature/phase4') {
+                errorMsg += `Phase 4 issues (#95-#121) must target "feature/phase4" branch.\n`;
+                errorMsg += 'This follows Phase Integration Strategy for large feature development.\n';
+              } else {
+                errorMsg += `This branch should target "${expectedTarget}" branch.\n`;
+              }
+
+              errorMsg += '\nPhase Integration Strategy:\n';
+              errorMsg += '1. Individual Issue → Phase integration branch (feature/phaseX)\n';
+              errorMsg += '2. Phase completion → Main branch (feature/phaseX → main)\n';
+              errorMsg += '\nSee CLAUDE.md for complete workflow details.';
+
+              core.setFailed(errorMsg);
+              return;
+            }
+
+            console.log(`✅ Branch name and PR target are valid: ${headBranch} → ${baseBranch}`);
+
       - name: Summary
         run: |
           echo "🎉 All PR validation checks passed!"
           echo ""
           echo "✅ PR description contains issue closure reference"
-          echo "✅ All commits contain issue references"
+          echo "✅ All commits contain issue references and follow format"
           echo "✅ PR title follows conventional commit format"
+          echo "✅ Branch name follows naming convention"
+          echo "✅ PR targets correct branch per Phase Integration Strategy"

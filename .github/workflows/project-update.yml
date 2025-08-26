@@ -5,6 +5,8 @@ on:
     types: [opened, closed]
   issues:
     types: [opened]
+  push:
+    branches: [feature/phase4]
 
 env:
   PROJECT_ID: "PVT_kwHOAVzM6c4BAoYL"
@@ -21,7 +23,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Extract issue number from PR or Issue
+      - name: Extract issue number from PR, Issue, or Push
         id: extract-issue
         uses: actions/github-script@v7
         with:
@@ -50,6 +52,25 @@ jobs:
                 if (match) {
                   issueNumber = parseInt(match[1]);
                   console.log(`Found issue reference in ${match.input}: #${issueNumber}`);
+                  break;
+                }
+              }
+            } else if (context.eventName === 'push') {
+              // Extract from commit messages in push event
+              const commitMessage = context.payload.head_commit?.message || '';
+              console.log(`Push event commit message: ${commitMessage}`);
+
+              const patterns = [
+                /\(refs #(\d+)\)/,
+                /(?:Closes|closes|Fixes|fixes|Resolves|resolves)\s+#(\d+)/,
+                /#(\d+)/
+              ];
+
+              for (const pattern of patterns) {
+                const match = commitMessage.match(pattern);
+                if (match) {
+                  issueNumber = parseInt(match[1]);
+                  console.log(`Found issue reference in commit: #${issueNumber}`);
                   break;
                 }
               }
@@ -197,8 +218,45 @@ jobs:
               console.log(`❌ Failed to update status to In Progress: ${error.message}`);
             }
 
-      - name: Update project status - PR merged (Done)
-        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && steps.get-item.outputs.skip != 'true'
+      - name: Update project status - PR merged to Phase4 (Ready for Integration)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/feature/phase4' && steps.get-item.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const mutation = `
+              mutation($projectId: ID!, $itemId: ID!, $fieldId: ID!, $value: String!) {
+                updateProjectV2ItemFieldValue(input: {
+                  projectId: $projectId
+                  itemId: $itemId
+                  fieldId: $fieldId
+                  value: {
+                    singleSelectOptionId: $value
+                  }
+                }) {
+                  projectV2Item {
+                    id
+                  }
+                }
+              }
+            `;
+
+            const variables = {
+              projectId: process.env.PROJECT_ID,
+              itemId: "${{ steps.get-item.outputs.project-item-id }}",
+              fieldId: process.env.STATUS_FIELD_ID,
+              value: process.env.READY_FOR_INTEGRATION_ID
+            };
+
+            try {
+              await github.graphql(mutation, variables);
+              console.log(`✅ Updated issue #${{ steps.extract-issue.outputs.issue-number }} status to Ready for Integration`);
+            } catch (error) {
+              console.log(`❌ Failed to update status to Ready for Integration: ${error.message}`);
+            }
+
+      - name: Update project status - PR merged to Main (Done)
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && steps.get-item.outputs.skip != 'true'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -245,6 +303,8 @@ jobs:
             echo "Status updated: Todo"
           elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.action }}" = "opened" ]; then
             echo "Status updated: In Progress"
-          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.action }}" = "closed" ] && [ "${{ github.event.pull_request.merged }}" = "true" ]; then
-            echo "Status updated: Done"
+          elif [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/feature/phase4" ]; then
+            echo "Status updated: Ready for Integration (Phase4 integration)"
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.action }}" = "closed" ] && [ "${{ github.event.pull_request.merged }}" = "true" ] && [ "${{ github.event.pull_request.base.ref }}" = "main" ]; then
+            echo "Status updated: Done (Main integration)"
           fi

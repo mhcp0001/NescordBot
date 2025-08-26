@@ -27,7 +27,17 @@ Closes #
 pytest の実行結果を貼り付け
 ```
 
-## 確認事項
+## 開発ルール遵守チェック
+<!-- 必須：全項目をチェックしてください -->
+- [ ] ブランチ名が命名規則に従っている (`type/issue-number-description`)
+- [ ] PR タイトルが conventional commit 形式 (`type(scope): description`)
+- [ ] 全コミットメッセージに issue 参照が含まれている (`(refs #123)`)
+- [ ] PR 本文に issue クローズ参照が含まれている (`Closes #123`)
+- [ ] PR ターゲットが Phase Integration Strategy に従っている
+  - Phase 4 issues (#95-#121) → `feature/phase4`
+  - その他の issues → `main`
+
+## 品質確認事項
 <!-- レビュアーに確認してほしいこと -->
 - [ ] コードスタイルがプロジェクトの規約に従っている
 - [ ] エラーハンドリングが適切である
