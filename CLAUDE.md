@@ -79,51 +79,70 @@ Before using the automated workflow, ensure gh CLI is properly set up:
 - **Auto-Linking**: Automatic connection between branches, commits, PRs, and issues
 - **Project Status Sync**: Maintain GitHub Project board status in sync with development progress
 
-### GitHub Project Status Management
-**Status Flow**: Todo → In Progress → Done
+### 🤖 自動化されたIssue管理ライフサイクル
 
-#### Status Update Commands
+**完全自動化されたステータスフロー**: Todo → In Progress → Ready for Integration → Done
+
+#### ⚡ GitHub Actions自動処理
+以下は**全て自動化済み**のため手動操作は禁止です：
+
+```
+1. Issue作成     → 自動でプロジェクト追加 & Todo ステータス
+2. PR作成       → 自動でIn Progress ステータス
+3. CI全通過     → 自動でReady for Integration ステータス
+4. PRマージ     → 自動でIssueクローズ & Done ステータス
+```
+
+#### 🔧 システム設定値
 ```bash
-# Constants for Nescord Project
+# Nescord Project環境変数 (GitHub Actions用)
 PROJECT_ID="PVT_kwHOAVzM6c4BAoYL"
 STATUS_FIELD_ID="PVTSSF_lAHOAVzM6c4BAoYLzgzYKtg"
 TODO_ID="f75ad846"
 IN_PROGRESS_ID="47fc9ee4"
+READY_FOR_INTEGRATION_ID="0ee8d97c"  # 新規追加
 DONE_ID="98236657"
-
-# Todo → In Progress (when starting work)
-gh project item-edit --id [PROJECT_ITEM_ID] \
-  --field-id "$STATUS_FIELD_ID" \
-  --single-select-option-id "$IN_PROGRESS_ID" \
-  --project-id "$PROJECT_ID"
-
-# In Progress → Done (when PR merged)
-gh project item-edit --id [PROJECT_ITEM_ID] \
-  --field-id "$STATUS_FIELD_ID" \
-  --single-select-option-id "$DONE_ID" \
-  --project-id "$PROJECT_ID"
 ```
 
-#### Status Update Rules (Mandatory)
-1. **Branch Creation Time**: Update Issue status from Todo → In Progress
-2. **PR Merge Time**: Update Issue status from In Progress → Done
-3. **Alternative**: Use GitHub UI drag-and-drop on project board
-4. **Violation**: Any Issue not following status flow must be corrected immediately
+#### 🚫 手動操作禁止事項
+- ❌ GitHub Projectsでのステータス手動変更
+- ❌ Issueの手動クローズ（緊急時除く）
+- ❌ PRと無関係なIssue操作
 
-### Automated Issue Workflow
+#### 📋 開発者が行う作業
+1. **Issue作成** - 適切なテンプレート使用
+2. **ブランチ作成** - `feature/123-description` 形式
+3. **PR作成** - 必ず `Closes #123` を記載
+4. **CI修正** - 失敗時の修正作業のみ
+
+#### 🔍 緊急時手動操作（非推奨）
+```bash
+# 緊急時のみ使用：手動ステータス変更
+gh project item-edit --id [PROJECT_ITEM_ID] \
+  --field-id "$STATUS_FIELD_ID" \
+  --single-select-option-id "$READY_FOR_INTEGRATION_ID" \
+  --project-id "$PROJECT_ID"
+
+### 📚 関連ドキュメント
+- **詳細ガイド**: `CONTRIBUTING.md` - 開発者向け詳細ワークフロー
+- **GitHub Actions**: `.github/workflows/` - 自動化の実装詳細
+- **Issue Templates**: `.github/ISSUE_TEMPLATE/` - 標準化されたテンプレート
+
+### Automated Issue Workflow (Legacy - GitHub Actions化済み)
 
 #### 1. Issue Creation
 ```bash
-# Use templates for consistent reporting
+# 標準化されたテンプレート使用（推奨）
 gh issue create --template bug_report.md --title "Description"
 gh issue create --template feature_request.md --title "Description"
 ```
 
 #### 2. Branch Creation & Development Start
 ```bash
-# Automatic branch creation with issue linking
-gh issue develop 123 --name "type/123-description" --base main
-# Types: feature/, fix/, docs/, refactor/, test/, ci/, hotfix/
+# Issue関連ブランチ作成（手動）
+gh issue develop 123 --name "feature/123-description" --base main
+# または直接作成
+git checkout -b feature/123-description main
 ```
 
 #### 3. Commit Convention (Enhanced)

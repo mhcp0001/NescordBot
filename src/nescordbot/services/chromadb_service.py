@@ -8,6 +8,7 @@ and performing semantic search using ChromaDB in-process database.
 import asyncio
 import json
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
@@ -577,6 +578,74 @@ class ChromaDBService:
         """Ensure service is initialized before operations."""
         if not self._initialized:
             await self.initialize()
+
+    async def verify_persistence(self) -> bool:
+        """
+        Verify persistence directory integrity and ChromaDB functionality.
+
+        Returns:
+            True if persistence is working correctly, False otherwise
+        """
+        try:
+            # 1. Check persist directory exists and is writable
+            if not self.persist_dir.exists():
+                logger.error(f"Persist directory does not exist: {self.persist_dir}")
+                return False
+
+            # Test write permissions
+            test_file = self.persist_dir / "test_write_permission.tmp"
+            try:
+                test_file.write_text("test")
+                test_file.unlink()
+            except (PermissionError, OSError) as e:
+                logger.error(f"No write permission to persist directory: {e}")
+                return False
+
+            # 2. Initialize ChromaDB if not already done
+            if not self._initialized:
+                await self.initialize()
+
+            # 3. Test document operations
+            test_doc_id = "persistence_test_doc"
+            test_content = "This is a persistence test document"
+            test_embedding = [0.1] * 384  # Simple test embedding vector
+            test_metadata = DocumentMetadata(
+                document_id=test_doc_id,
+                created_at=str(int(time.time())),
+                content_type="text",
+                tags=["test"],
+            )
+
+            # Add test document
+            await self.add_document(
+                document_id=test_doc_id,
+                content=test_content,
+                embedding=test_embedding,
+                metadata=test_metadata,
+            )
+
+            # Verify document exists
+            count = await self.get_document_count()
+            if count == 0:
+                logger.error("Failed to add test document")
+                return False
+
+            # Search for test document
+            results = await self.search_documents(query_embedding=test_embedding, n_results=1)
+
+            if not results or results[0].document_id != test_doc_id:
+                logger.error("Failed to search test document")
+                return False
+
+            # Clean up test document
+            await self.delete_document(test_doc_id)
+
+            logger.info("ChromaDB persistence verification successful")
+            return True
+
+        except Exception as e:
+            logger.error(f"ChromaDB persistence verification failed: {e}")
+            return False
 
     async def close(self) -> None:
         """Clean up resources."""
