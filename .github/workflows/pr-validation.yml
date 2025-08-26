@@ -61,7 +61,8 @@ jobs:
               echo "Checking: $commit_msg"
 
               # Check for conventional commit format with issue reference
-              if ! echo "$commit_msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore)(\([a-zA-Z0-9_-]+\))?: .+ \(refs #[0-9]+\)$'; then
+              # Allow optional PR number after refs: (refs #123) or (refs #123) (#456)
+              if ! echo "$commit_msg" | grep -qE '^(feat|fix|docs|style|refactor|test|chore)(\([a-zA-Z0-9_-]+\))?: .+ \(refs #[0-9]+\)( \(#[0-9]+\))?$'; then
                 echo "❌ Commit message format error: $commit_msg"
                 echo "   Required format: type(scope): description (refs #issue-number)"
                 echo "   ・Title must be ≤72 characters"
