@@ -24,6 +24,17 @@ from .service_container import (
     get_service_container,
     reset_service_container,
 )
+from .sync_manager import (
+    ConsistencyReport,
+    RepairReport,
+    SyncConsistencyError,
+    SyncError,
+    SyncManager,
+    SyncReport,
+    SyncResult,
+    SyncServiceUnavailableError,
+    SyncStatus,
+)
 from .token_manager import TokenLimitExceededError, TokenManager, TokenUsageError
 
 __all__ = [
@@ -56,4 +67,13 @@ __all__ = [
     "TokenManager",
     "TokenUsageError",
     "TokenLimitExceededError",
+    "SyncManager",
+    "SyncStatus",
+    "SyncResult",
+    "SyncReport",
+    "ConsistencyReport",
+    "RepairReport",
+    "SyncError",
+    "SyncServiceUnavailableError",
+    "SyncConsistencyError",
 ]

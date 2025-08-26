@@ -25,6 +25,7 @@ from .services import (
     GitOperationService,
     NoteProcessingService,
     ObsidianGitHubService,
+    SyncManager,
     TokenManager,
     create_service_container,
 )
@@ -423,9 +424,20 @@ class NescordBot(commands.Bot):
 
             self.service_container.register_factory(TokenManager, create_token_manager)
 
+            # Register SyncManager factory
+            def create_sync_manager() -> SyncManager:
+                # Get dependencies from service container
+                embedding_service = self.service_container.get_service(EmbeddingService)
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                return SyncManager(
+                    self.config, self.database_service, chromadb_service, embedding_service
+                )
+
+            self.service_container.register_factory(SyncManager, create_sync_manager)
+
             self.logger.info(
                 "ServiceContainer initialized with EmbeddingService, "
-                "ChromaDBService, and TokenManager"
+                "ChromaDBService, TokenManager, and SyncManager"
             )
 
         except Exception as e:

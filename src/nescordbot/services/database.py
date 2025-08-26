@@ -540,8 +540,8 @@ class DatabaseService(IDataStore):
         async with self._lock:
             try:
                 base_query = """
-                    SELECT api_type, operation,
-                           SUM(token_count) as total_tokens,
+                    SELECT provider, model,
+                           SUM(input_tokens + output_tokens) as total_tokens,
                            COUNT(*) as request_count
                     FROM token_usage
                     WHERE timestamp >= datetime('now', '-{} days')
@@ -554,7 +554,7 @@ class DatabaseService(IDataStore):
                     base_query += " AND user_id = ?"
                     params.append(user_id)
 
-                base_query += " GROUP BY api_type, operation ORDER BY total_tokens DESC"
+                base_query += " GROUP BY provider, model ORDER BY total_tokens DESC"
 
                 cursor = await self.connection.execute(base_query, params)
                 rows = await cursor.fetchall()
@@ -565,12 +565,12 @@ class DatabaseService(IDataStore):
                 total_requests = 0
 
                 for row in rows:
-                    api_type, operation, tokens, requests = row
+                    provider, model, tokens, requests = row
 
-                    if api_type not in usage_by_type:
-                        usage_by_type[api_type] = {}
+                    if provider not in usage_by_type:
+                        usage_by_type[provider] = {}
 
-                    usage_by_type[api_type][operation] = {"tokens": tokens, "requests": requests}
+                    usage_by_type[provider][model] = {"tokens": tokens, "requests": requests}
 
                     total_tokens += tokens
                     total_requests += requests
