@@ -7,17 +7,46 @@ and infrastructure operations for the bot.
 
 from ..security import SecurityValidator
 from .batch_processor import BatchProcessor, GitHubIntegratedQueue
+from .chromadb_service import ChromaDBService, DocumentMetadata, SearchResult
 from .database import DatabaseService, IDataStore
+from .embedding import EmbeddingResult, EmbeddingService, EmbeddingServiceError
 from .git_operations import FileOperation, GitOperationService
 from .github import GitHubService
 from .github_auth import GitHubAuthManager
+from .knowledge_manager import KnowledgeManager, KnowledgeManagerError
 from .note_processing import NoteProcessingService
 from .obsidian_github import ObsidianGitHubService, ObsidianSyncStatus
 from .persistent_queue import FileRequest, PersistentQueue
+from .service_container import (
+    ServiceContainer,
+    ServiceInitializationError,
+    ServiceNotFoundError,
+    create_service_container,
+    get_service_container,
+    reset_service_container,
+)
+from .sync_manager import (
+    ConsistencyReport,
+    RepairReport,
+    SyncConsistencyError,
+    SyncError,
+    SyncManager,
+    SyncReport,
+    SyncResult,
+    SyncServiceUnavailableError,
+    SyncStatus,
+)
+from .token_manager import TokenLimitExceededError, TokenManager, TokenUsageError
 
 __all__ = [
     "DatabaseService",
     "IDataStore",
+    "ChromaDBService",
+    "DocumentMetadata",
+    "SearchResult",
+    "EmbeddingService",
+    "EmbeddingResult",
+    "EmbeddingServiceError",
     "GitHubService",
     "PersistentQueue",
     "FileRequest",
@@ -30,4 +59,24 @@ __all__ = [
     "ObsidianGitHubService",
     "ObsidianSyncStatus",
     "SecurityValidator",
+    "KnowledgeManager",
+    "KnowledgeManagerError",
+    "ServiceContainer",
+    "ServiceNotFoundError",
+    "ServiceInitializationError",
+    "get_service_container",
+    "create_service_container",
+    "reset_service_container",
+    "TokenManager",
+    "TokenUsageError",
+    "TokenLimitExceededError",
+    "SyncManager",
+    "SyncStatus",
+    "SyncResult",
+    "SyncReport",
+    "ConsistencyReport",
+    "RepairReport",
+    "SyncError",
+    "SyncServiceUnavailableError",
+    "SyncConsistencyError",
 ]

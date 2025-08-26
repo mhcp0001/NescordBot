@@ -19,11 +19,16 @@ from .security import SecurityValidator
 from .services import (
     BatchProcessor,
     DatabaseService,
+    EmbeddingService,
     GitHubAuthManager,
     GitHubService,
     GitOperationService,
+    KnowledgeManager,
     NoteProcessingService,
     ObsidianGitHubService,
+    SyncManager,
+    TokenManager,
+    create_service_container,
 )
 
 
@@ -83,6 +88,9 @@ class NescordBot(commands.Bot):
 
         # Initialize ObsidianGitHub integration services
         self._init_obsidian_services()
+
+        # Initialize ServiceContainer with Phase 4 services
+        self._init_service_container()
 
         self.logger.info("NescordBot instance created")
 
@@ -390,6 +398,70 @@ class NescordBot(commands.Bot):
             self.logger.error(f"Failed to initialize ObsidianGitHub services async: {e}")
             # Clean up partially initialized services
             self.obsidian_service = None
+
+    def _init_service_container(self) -> None:
+        """Initialize ServiceContainer with Phase 4 services."""
+        try:
+            # Create service container
+            self.service_container = create_service_container(self.config)
+
+            # Register EmbeddingService factory
+            def create_embedding_service() -> EmbeddingService:
+                return EmbeddingService(self.config)
+
+            self.service_container.register_factory(EmbeddingService, create_embedding_service)
+
+            # Register ChromaDBService factory
+            from .services.chromadb_service import ChromaDBService
+
+            def create_chromadb_service() -> ChromaDBService:
+                return ChromaDBService(self.config)
+
+            self.service_container.register_factory(ChromaDBService, create_chromadb_service)
+
+            # Register TokenManager factory
+            def create_token_manager() -> TokenManager:
+                return TokenManager(self.config, self.database_service)
+
+            self.service_container.register_factory(TokenManager, create_token_manager)
+
+            # Register SyncManager factory
+            def create_sync_manager() -> SyncManager:
+                # Get dependencies from service container
+                embedding_service = self.service_container.get_service(EmbeddingService)
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                return SyncManager(
+                    self.config, self.database_service, chromadb_service, embedding_service
+                )
+
+            self.service_container.register_factory(SyncManager, create_sync_manager)
+
+            # KnowledgeManager factory
+            def create_knowledge_manager() -> KnowledgeManager:
+                database_service = self.database_service
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                embedding_service = self.service_container.get_service(EmbeddingService)
+                sync_manager = self.service_container.get_service(SyncManager)
+                obsidian_github_service = self.service_container.get_service(ObsidianGitHubService)
+                return KnowledgeManager(
+                    self.config,
+                    database_service,
+                    chromadb_service,
+                    embedding_service,
+                    sync_manager,
+                    obsidian_github_service,
+                )
+
+            self.service_container.register_factory(KnowledgeManager, create_knowledge_manager)
+
+            self.logger.info(
+                "ServiceContainer initialized with EmbeddingService, "
+                "ChromaDBService, TokenManager, SyncManager, and KnowledgeManager"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize ServiceContainer: {e}")
+            self.service_container = None  # type: ignore[assignment]  # type: ignore[assignment]
 
 
 async def main() -> None:

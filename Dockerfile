@@ -43,6 +43,10 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY . .
 
+# Create data directories with proper permissions
+RUN mkdir -p /app/data /app/chromadb_data && \
+    chmod 755 /app/data /app/chromadb_data
+
 # Configure Poetry to not create virtualenv and install project with scripts
 RUN poetry config virtualenvs.create false \
     && poetry install --only-root
@@ -51,6 +55,9 @@ RUN poetry config virtualenvs.create false \
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app/src:$PYTHONPATH
+
+# Define volume mount points for Railway persistent storage
+VOLUME ["/app/data", "/app/chromadb_data"]
 
 # Health check (optional but recommended)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

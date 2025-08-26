@@ -170,7 +170,13 @@
       "Bash(git config:*)",
       "mcp__github__list_issues",
       "mcp__gemini-yusukedev__gemini_chat_flash",
-      "Bash(gh project:*)"
+      "Bash(gh project:*)",
+      "Bash(git merge:*)",
+      "mcp__github__get_issue",
+      "Bash(git stash:*)",
+      "Bash(gh auth:*)",
+      "Bash(git branch:*)",
+      "Bash(gh pr status:*)"
     ],
     "deny": [
       "Bash(> /etc/*)",
