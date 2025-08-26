@@ -182,6 +182,7 @@ class CreateTokenUsageMigration(Migration):
                 api_type TEXT NOT NULL,
                 operation TEXT NOT NULL,
                 token_count INTEGER NOT NULL,
+                provider TEXT NOT NULL,
                 user_id TEXT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
                 metadata TEXT
@@ -211,12 +212,20 @@ class CreateTokenUsageMigration(Migration):
         """
         )
 
+        await connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_token_usage_provider
+            ON token_usage(provider)
+        """
+        )
+
     async def down(self, connection: aiosqlite.Connection) -> None:
         """Drop token_usage table."""
         await connection.execute("DROP TABLE IF EXISTS token_usage")
         await connection.execute("DROP INDEX IF EXISTS idx_token_usage_api_type")
         await connection.execute("DROP INDEX IF EXISTS idx_token_usage_timestamp")
         await connection.execute("DROP INDEX IF EXISTS idx_token_usage_user_id")
+        await connection.execute("DROP INDEX IF EXISTS idx_token_usage_provider")
 
 
 class ExtendTranscriptionsMigration(Migration):
