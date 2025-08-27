@@ -6,10 +6,12 @@ for combining vector similarity search and FTS5 keyword search results.
 """
 
 import asyncio
+import hashlib
 import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 from ..config import BotConfig
@@ -17,6 +19,14 @@ from ..logger import get_logger
 from .chromadb_service import ChromaDBService
 from .database import DatabaseService
 from .embedding import EmbeddingService
+
+
+class SearchMode(Enum):
+    """Search mode enumeration for different search strategies."""
+
+    VECTOR = "vector"
+    KEYWORD = "keyword"
+    HYBRID = "hybrid"
 
 
 @dataclass
@@ -104,25 +114,35 @@ class SearchEngine:
         self.config = config
         self.logger = get_logger(__name__)
 
-        # RRF configuration
-        self.rrf_k = 60  # RRF constant (typical value)
-        self.default_alpha = 0.7  # Vector search weight
+        # RRF configuration - use values from config
+        self.rrf_k = getattr(config, "rrf_k_value", 60)
+        self.default_alpha = getattr(config, "hybrid_search_alpha", 0.7)
+        self.enable_dynamic_rrf_k = getattr(config, "enable_dynamic_rrf_k", True)
 
         # Performance settings
         self.max_search_time = 30.0  # seconds
-        self.default_limit = 10
+        self.default_limit = getattr(config, "max_search_results", 10)
+
+        # Cache settings
+        self.cache_enabled = getattr(config, "search_cache_enabled", True)
+        self.cache_ttl = getattr(config, "search_cache_ttl_seconds", 300)
+        self._search_cache: Optional[Dict[str, Tuple[List[SearchResult], float]]] = (
+            {} if self.cache_enabled else None
+        )
 
     async def hybrid_search(
         self,
         query: str,
+        mode: Optional[SearchMode] = None,
         alpha: Optional[float] = None,
         limit: Optional[int] = None,
         filters: Optional[SearchFilters] = None,
     ) -> List[SearchResult]:
-        """Perform hybrid search using RRF fusion.
+        """Perform search with various modes: vector, keyword, or hybrid with RRF fusion.
 
         Args:
             query: Search query text
+            mode: Search mode (vector/keyword/hybrid), defaults to hybrid
             alpha: Vector search weight (0.0-1.0), defaults to 0.7
             limit: Maximum results to return
             filters: Optional search filters
@@ -140,10 +160,21 @@ class SearchEngine:
         if not query or not query.strip():
             raise SearchQueryError("Empty search query")
 
+        # Default parameters
+        if mode is None:
+            mode = SearchMode.HYBRID
         if alpha is None:
             alpha = self.default_alpha
         if limit is None:
             limit = self.default_limit
+
+        # Cache check
+        cache_key = self._generate_cache_key(query, mode, alpha, limit, filters)
+        if self.cache_enabled:
+            cached_result = self._get_cached_result(cache_key)
+            if cached_result:
+                self.logger.info(f"Returning cached search result for query: '{query[:50]}...'")
+                return cached_result
 
         # Validate parameters
         if not 0.0 <= alpha <= 1.0:
@@ -154,45 +185,71 @@ class SearchEngine:
         query = query.strip()
 
         try:
-            # Run vector and keyword search in parallel
-            search_limit = min(limit * 3, 100)  # Get more results for better fusion
+            # Execute search based on mode
+            if mode == SearchMode.VECTOR:
+                final_results = await self._vector_search(query, limit, filters)
+            elif mode == SearchMode.KEYWORD:
+                final_results = await self._keyword_search(query, limit, filters)
+            else:  # HYBRID mode
+                # Run vector and keyword search in parallel
+                search_limit = min(limit * 3, 100)  # Get more results for better fusion
 
-            vector_task = self._vector_search(query, search_limit, filters)
-            keyword_task = self._keyword_search(query, search_limit, filters)
+                vector_task = self._vector_search(query, search_limit, filters)
+                keyword_task = self._keyword_search(query, search_limit, filters)
 
-            vector_results, keyword_results = await asyncio.gather(
-                vector_task, keyword_task, return_exceptions=True
-            )
+                vector_results, keyword_results = await asyncio.gather(
+                    vector_task, keyword_task, return_exceptions=True
+                )
 
-            # Handle exceptions from parallel execution
-            vector_results_list: List[SearchResult] = []
-            keyword_results_list: List[SearchResult] = []
+                # Handle exceptions from parallel execution
+                vector_results_list: List[SearchResult] = []
+                keyword_results_list: List[SearchResult] = []
 
-            if isinstance(vector_results, Exception):
-                self.logger.error(f"Vector search failed: {vector_results}")
-                vector_results_list = []
-            else:
-                vector_results_list = cast(List[SearchResult], vector_results)
+                if isinstance(vector_results, Exception):
+                    self.logger.error(f"Vector search failed: {vector_results}")
+                    vector_results_list = []
+                else:
+                    vector_results_list = cast(List[SearchResult], vector_results)
 
-            if isinstance(keyword_results, Exception):
-                self.logger.error(f"Keyword search failed: {keyword_results}")
-                keyword_results_list = []
-            else:
-                keyword_results_list = cast(List[SearchResult], keyword_results)
+                if isinstance(keyword_results, Exception):
+                    self.logger.error(f"Keyword search failed: {keyword_results}")
+                    keyword_results_list = []
+                else:
+                    keyword_results_list = cast(List[SearchResult], keyword_results)
 
-            # Fusion using RRF
-            fused_results = self._rrf_fusion(vector_results_list, keyword_results_list, alpha)
+                # Enhanced RRF fusion with dynamic k
+                dynamic_rrf_k = (
+                    self._calculate_dynamic_rrf_k(vector_results_list, keyword_results_list)
+                    if self.enable_dynamic_rrf_k
+                    else self.rrf_k
+                )
+                fused_results = self._enhanced_rrf_fusion(
+                    vector_results_list, keyword_results_list, alpha, dynamic_rrf_k
+                )
 
-            # Apply post-fusion filters and limit
-            final_results = self._post_process_results(fused_results, filters, limit)
+                # Apply post-fusion filters and limit
+                final_results = self._post_process_results(fused_results, filters, limit)
+
+            # Cache the result
+            if self.cache_enabled:
+                self._cache_result(cache_key, final_results)
 
             execution_time = (time.time() - start_time) * 1000  # ms
 
-            self.logger.info(
-                f"Hybrid search completed: query='{query[:50]}...', "
-                f"vector={len(vector_results_list)}, keyword={len(keyword_results_list)}, "
-                f"final={len(final_results)}, time={execution_time:.1f}ms"
-            )
+            # Log search completion with mode info
+            if mode == SearchMode.HYBRID:
+                self.logger.info(
+                    f"Hybrid search completed: query='{query[:50]}...', "
+                    f"mode={mode.value}, vector={len(vector_results_list)}, "
+                    f"keyword={len(keyword_results_list)}, final={len(final_results)}, "
+                    f"rrf_k={dynamic_rrf_k if 'dynamic_rrf_k' in locals() else self.rrf_k}, "
+                    f"time={execution_time:.1f}ms"
+                )
+            else:
+                self.logger.info(
+                    f"Search completed: query='{query[:50]}...', "
+                    f"mode={mode.value}, final={len(final_results)}, time={execution_time:.1f}ms"
+                )
 
             return final_results
 
@@ -531,6 +588,140 @@ class SearchEngine:
         fused_results.sort(key=lambda x: x.score, reverse=True)
 
         return fused_results
+
+    def _enhanced_rrf_fusion(
+        self,
+        vector_results: List[SearchResult],
+        keyword_results: List[SearchResult],
+        alpha: float,
+        rrf_k: int,
+    ) -> List[SearchResult]:
+        """Enhanced RRF fusion with dynamic k and improved scoring.
+
+        RRF Score = α × (1/(rank_vector + k)) + (1-α) × (1/(rank_keyword + k))
+        Enhanced with score normalization and rank quality adjustment.
+        """
+        # Create rank maps
+        vector_ranks = {result.note_id: rank for rank, result in enumerate(vector_results)}
+        keyword_ranks = {result.note_id: rank for rank, result in enumerate(keyword_results)}
+
+        # Get all unique note IDs
+        all_note_ids = set(vector_ranks.keys()) | set(keyword_ranks.keys())
+
+        # Create results map for easy lookup
+        results_map = {}
+        for result in vector_results:
+            results_map[result.note_id] = result
+        for result in keyword_results:
+            results_map[result.note_id] = result
+
+        # Calculate RRF scores with enhancements
+        fused_results = []
+        for note_id in all_note_ids:
+            vector_rank = vector_ranks.get(note_id, len(vector_results))
+            keyword_rank = keyword_ranks.get(note_id, len(keyword_results))
+
+            # Enhanced RRF formula with score normalization
+            vector_score = 1.0 / (vector_rank + rrf_k)
+            keyword_score = 1.0 / (keyword_rank + rrf_k)
+
+            # Apply rank quality adjustment (penalize results missing from one source)
+            presence_bonus = 0.1 if (note_id in vector_ranks and note_id in keyword_ranks) else 0.0
+
+            rrf_score = alpha * vector_score + (1 - alpha) * keyword_score + presence_bonus
+
+            # Get the result object (prefer vector over keyword for metadata)
+            result = results_map[note_id]
+
+            # Create new result with enhanced RRF score
+            fused_result = SearchResult(
+                note_id=result.note_id,
+                title=result.title,
+                content=result.content,
+                score=min(rrf_score, 1.0),  # Cap at 1.0
+                source="hybrid",
+                metadata=result.metadata,
+                created_at=result.created_at,
+                relevance_reason=(
+                    f"Enhanced RRF: v_rank={vector_rank}, k_rank={keyword_rank}, k={rrf_k}"
+                ),
+            )
+
+            fused_results.append(fused_result)
+
+        # Sort by RRF score descending
+        fused_results.sort(key=lambda x: x.score, reverse=True)
+
+        return fused_results
+
+    def _calculate_dynamic_rrf_k(
+        self, vector_results: List[SearchResult], keyword_results: List[SearchResult]
+    ) -> int:
+        """Calculate dynamic RRF k value based on result set characteristics."""
+        if not vector_results or not keyword_results:
+            return self.rrf_k
+
+        # Calculate overlap ratio
+        vector_ids = {r.note_id for r in vector_results}
+        keyword_ids = {r.note_id for r in keyword_results}
+        overlap = len(vector_ids & keyword_ids)
+        total_unique = len(vector_ids | keyword_ids)
+        overlap_ratio = overlap / total_unique if total_unique > 0 else 0
+
+        # Adjust k based on overlap (higher overlap = lower k, more fusion)
+        if overlap_ratio > 0.5:
+            return max(20, self.rrf_k - 20)  # More aggressive fusion
+        elif overlap_ratio > 0.2:
+            return self.rrf_k  # Default
+        else:
+            return min(100, self.rrf_k + 20)  # Less aggressive fusion
+
+    def _generate_cache_key(
+        self,
+        query: str,
+        mode: SearchMode,
+        alpha: float,
+        limit: int,
+        filters: Optional[SearchFilters],
+    ) -> str:
+        """Generate cache key for search parameters."""
+        filter_str = ""
+        if filters:
+            filter_str = (
+                f"{filters.user_id or ''}{filters.content_type or ''}"
+                f"{filters.tags or []}{filters.min_score or 0}"
+            )
+
+        cache_data = f"{query}{mode.value}{alpha}{limit}{filter_str}"
+        return hashlib.md5(cache_data.encode()).hexdigest()
+
+    def _get_cached_result(self, cache_key: str) -> Optional[List[SearchResult]]:
+        """Get cached search result if valid."""
+        if self._search_cache is None or cache_key not in self._search_cache:
+            return None
+
+        result, timestamp = self._search_cache[cache_key]
+        if time.time() - timestamp > self.cache_ttl:
+            # Expired, remove from cache
+            del self._search_cache[cache_key]
+            return None
+
+        return result
+
+    def _cache_result(self, cache_key: str, results: List[SearchResult]) -> None:
+        """Cache search results."""
+        if self._search_cache is None:
+            return
+
+        # Simple LRU: remove oldest if cache is too large
+        if len(self._search_cache) > 100:  # Max 100 cached queries
+            oldest_key = min(
+                self._search_cache.keys(),
+                key=lambda k: self._search_cache[k][1] if self._search_cache else 0,
+            )
+            del self._search_cache[oldest_key]
+
+        self._search_cache[cache_key] = (results, time.time())
 
     def _post_process_results(
         self, results: List[SearchResult], filters: Optional[SearchFilters], limit: int

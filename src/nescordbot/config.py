@@ -112,6 +112,16 @@ class BotConfig(BaseModel):
     )
     embedding_dimension: int = Field(default=768, description="Embedding vector dimension")
 
+    # Phase 4: Advanced RRF settings
+    rrf_k_value: int = Field(
+        default=60, description="RRF constant value for rank fusion (typically 20-100)"
+    )
+    enable_dynamic_rrf_k: bool = Field(
+        default=True, description="Enable dynamic RRF k value adjustment"
+    )
+    search_cache_enabled: bool = Field(default=True, description="Enable search result caching")
+    search_cache_ttl_seconds: int = Field(default=300, description="Search cache TTL in seconds")
+
     # Phase 4: API migration mode settings
     ai_api_mode: str = Field(default="openai", description="AI API mode: openai, gemini, or hybrid")
     enable_api_fallback: bool = Field(

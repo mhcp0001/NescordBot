@@ -20,6 +20,7 @@ from src.nescordbot.services.search_engine import (
     SearchEngineError,
     SearchFilters,
     SearchHistory,
+    SearchMode,
     SearchQueryError,
     SearchResult,
     SearchTimeoutError,
@@ -37,6 +38,9 @@ class TestSearchEngine:
             discord_token="MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234",
             openai_api_key="sk-test_fake_key_not_real_for_testing_only_abcdef123456",
             log_level="DEBUG",
+            # Enable search cache for testing
+            search_cache_enabled=True,
+            search_cache_ttl_seconds=300,
         )
 
     @pytest.fixture
@@ -174,6 +178,29 @@ class TestSearchEngine:
             assert result.title
             assert result.content
             assert 0.0 <= result.score <= 1.0
+            assert result.source == "hybrid"
+
+    @pytest.mark.asyncio
+    async def test_search_modes(self, search_engine: SearchEngine) -> None:
+        """Test different search modes."""
+        query = "test search query"
+
+        # Test vector mode
+        vector_results = await search_engine.hybrid_search(query, mode=SearchMode.VECTOR)
+        assert isinstance(vector_results, list)
+        for result in vector_results:
+            assert result.source == "vector"
+
+        # Test keyword mode
+        keyword_results = await search_engine.hybrid_search(query, mode=SearchMode.KEYWORD)
+        assert isinstance(keyword_results, list)
+        for result in keyword_results:
+            assert result.source == "keyword"
+
+        # Test hybrid mode (default)
+        hybrid_results = await search_engine.hybrid_search(query, mode=SearchMode.HYBRID)
+        assert isinstance(hybrid_results, list)
+        for result in hybrid_results:
             assert result.source == "hybrid"
 
     @pytest.mark.asyncio
@@ -346,6 +373,176 @@ class TestSearchEngine:
         for result in fused_results:
             assert result.source == "hybrid"
 
+    def test_enhanced_rrf_fusion(self, search_engine: SearchEngine) -> None:
+        """Test enhanced RRF fusion with presence bonus."""
+        # Create test results with overlapping note
+        vector_results = [
+            SearchResult(
+                note_id="note1",
+                title="Vector Only",
+                content="Content 1",
+                score=0.9,
+                source="vector",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+            SearchResult(
+                note_id="note2",  # This will appear in both
+                title="Both Sources",
+                content="Content 2",
+                score=0.7,
+                source="vector",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+        ]
+
+        keyword_results = [
+            SearchResult(
+                note_id="note2",  # Overlapping result
+                title="Both Sources",
+                content="Content 2",
+                score=0.8,
+                source="keyword",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+            SearchResult(
+                note_id="note3",
+                title="Keyword Only",
+                content="Content 3",
+                score=0.6,
+                source="keyword",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+        ]
+
+        # Test enhanced RRF fusion
+        fused_results = search_engine._enhanced_rrf_fusion(
+            vector_results, keyword_results, alpha=0.7, rrf_k=60
+        )
+
+        assert isinstance(fused_results, list)
+        assert len(fused_results) == 3  # Unique note_ids
+
+        # Results should be sorted by enhanced RRF score
+        for i in range(len(fused_results) - 1):
+            assert fused_results[i].score >= fused_results[i + 1].score
+
+        # The overlapping result (note2) should receive presence bonus
+        note2_result = next((r for r in fused_results if r.note_id == "note2"), None)
+        assert note2_result is not None
+        # Due to presence bonus, overlapping result might have higher ranking
+
+        # All results should have hybrid source
+        for result in fused_results:
+            assert result.source == "hybrid"
+
+    def test_dynamic_rrf_k_calculation(self, search_engine: SearchEngine) -> None:
+        """Test dynamic RRF k value calculation."""
+        # Create test results - no overlap
+        vector_results = [
+            SearchResult(
+                note_id="note1",
+                title="Vector Only 1",
+                content="Content 1",
+                score=0.9,
+                source="vector",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+            SearchResult(
+                note_id="note2",
+                title="Vector Only 2",
+                content="Content 2",
+                score=0.8,
+                source="vector",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+        ]
+
+        keyword_results = [
+            SearchResult(
+                note_id="note3",
+                title="Keyword Only 1",
+                content="Content 3",
+                score=0.9,
+                source="keyword",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+            SearchResult(
+                note_id="note4",
+                title="Keyword Only 2",
+                content="Content 4",
+                score=0.8,
+                source="keyword",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+        ]
+
+        # Test no overlap - should return adjusted k (base k + 20)
+        k = search_engine._calculate_dynamic_rrf_k(vector_results, keyword_results)
+        assert k == min(100, search_engine.rrf_k + 20)
+
+        # Test with overlap
+        keyword_results_overlap = [
+            SearchResult(
+                note_id="note2",  # Same as vector result
+                title="Overlapping Result",
+                content="Content 2",
+                score=0.9,
+                source="keyword",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+            SearchResult(
+                note_id="note3",
+                title="Keyword Only",
+                content="Content 3",
+                score=0.8,
+                source="keyword",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+        ]
+
+        # Test overlap (overlap ratio = 1/3, should return default k)
+        k_overlap = search_engine._calculate_dynamic_rrf_k(vector_results, keyword_results_overlap)
+        # Overlap ratio 1/3 ≈ 0.33, which is in range 0.2-0.5, so returns default k
+        assert k_overlap == search_engine.rrf_k
+
+        # Test high overlap - create scenario with >50% overlap
+        keyword_results_high_overlap = [
+            SearchResult(
+                note_id="note1",  # Same as vector result
+                title="Overlapping Result 1",
+                content="Content 1",
+                score=0.9,
+                source="keyword",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+            SearchResult(
+                note_id="note2",  # Same as vector result
+                title="Overlapping Result 2",
+                content="Content 2",
+                score=0.8,
+                source="keyword",
+                metadata={},
+                created_at=datetime.now(),
+            ),
+        ]
+
+        # High overlap (2/2 = 100% > 50%) - should return lower k
+        k_high_overlap = search_engine._calculate_dynamic_rrf_k(
+            vector_results, keyword_results_high_overlap
+        )
+        assert k_high_overlap == max(20, search_engine.rrf_k - 20)
+
     def test_build_fts_query(self, search_engine: SearchEngine) -> None:
         """Test FTS5 query building."""
         # Test simple query
@@ -475,6 +672,88 @@ class TestSearchEngine:
 
         assert len(filtered_results) == 1
         assert filtered_results[0].note_id == "note1"
+
+    @pytest.mark.asyncio
+    async def test_search_cache(self, search_engine: SearchEngine) -> None:
+        """Test search result caching functionality."""
+        # Skip test if cache is disabled
+        if not search_engine.cache_enabled:
+            pytest.skip("Cache is disabled")
+
+        query = "cache test query"
+
+        # Test cache key generation
+        cache_key = search_engine._generate_cache_key(
+            query, limit=5, mode=SearchMode.HYBRID, alpha=0.7, filters=None
+        )
+        assert isinstance(cache_key, str)
+        assert len(cache_key) == 32  # MD5 hash length
+
+        # Verify cache is initially empty
+        cached_result = search_engine._get_cached_result(cache_key)
+        assert cached_result is None
+
+        # First search - should populate cache
+        results1 = await search_engine.hybrid_search(query, limit=5)
+        assert isinstance(results1, list)
+
+        # Verify cached result exists after search
+        cached_result = search_engine._get_cached_result(cache_key)
+        assert cached_result is not None
+        assert len(cached_result) == len(results1)
+
+        # Second identical search - should use cache
+        results2 = await search_engine.hybrid_search(query, limit=5)
+        assert len(results1) == len(results2)
+
+        # Results should be identical when cached
+        for r1, r2 in zip(results1, results2):
+            assert r1.note_id == r2.note_id
+            assert r1.score == r2.score
+
+    @pytest.mark.asyncio
+    async def test_search_cache_different_params(self, search_engine: SearchEngine) -> None:
+        """Test that different search parameters create different cache keys."""
+        query = "cache param test"
+
+        # Generate cache keys with different parameters
+        key1 = search_engine._generate_cache_key(
+            query, limit=5, mode=SearchMode.HYBRID, alpha=0.7, filters=None
+        )
+        key2 = search_engine._generate_cache_key(
+            query, limit=10, mode=SearchMode.HYBRID, alpha=0.7, filters=None
+        )
+        key3 = search_engine._generate_cache_key(
+            query, limit=5, mode=SearchMode.VECTOR, alpha=0.7, filters=None
+        )
+        key4 = search_engine._generate_cache_key(
+            query, limit=5, mode=SearchMode.HYBRID, alpha=0.5, filters=None
+        )
+
+        # All keys should be different
+        assert key1 != key2  # Different limits
+        assert key1 != key3  # Different modes
+        assert key1 != key4  # Different alpha
+        assert key2 != key3
+        assert key2 != key4
+        assert key3 != key4
+
+    @pytest.mark.asyncio
+    async def test_search_cache_with_filters(self, search_engine: SearchEngine) -> None:
+        """Test caching with search filters."""
+        query = "filter cache test"
+        filters = SearchFilters(user_id="test_user", min_score=0.5)
+
+        # Test cache key generation with filters
+        key_with_filters = search_engine._generate_cache_key(
+            query, limit=5, mode=SearchMode.HYBRID, alpha=0.7, filters=filters
+        )
+        key_without_filters = search_engine._generate_cache_key(
+            query, limit=5, mode=SearchMode.HYBRID, alpha=0.7, filters=None
+        )
+
+        # Keys should be different
+        assert key_with_filters != key_without_filters
 
     @pytest.mark.asyncio
     async def test_search_performance_logging(self, search_engine: SearchEngine, caplog) -> None:
