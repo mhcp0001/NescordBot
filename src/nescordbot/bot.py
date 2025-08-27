@@ -26,6 +26,7 @@ from .services import (
     KnowledgeManager,
     NoteProcessingService,
     ObsidianGitHubService,
+    SearchEngine,
     SyncManager,
     TokenManager,
     create_service_container,
@@ -452,11 +453,23 @@ class NescordBot(commands.Bot):
                     obsidian_github_service,
                 )
 
+            def create_search_engine() -> SearchEngine:
+                database_service = self.database_service
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                embedding_service = self.service_container.get_service(EmbeddingService)
+                return SearchEngine(
+                    chroma_service=chromadb_service,
+                    db_service=database_service,
+                    embedding_service=embedding_service,
+                    config=self.config,
+                )
+
             self.service_container.register_factory(KnowledgeManager, create_knowledge_manager)
+            self.service_container.register_factory(SearchEngine, create_search_engine)
 
             self.logger.info(
                 "ServiceContainer initialized with EmbeddingService, "
-                "ChromaDBService, TokenManager, SyncManager, and KnowledgeManager"
+                "ChromaDBService, TokenManager, SyncManager, KnowledgeManager, and SearchEngine"
             )
 
         except Exception as e:

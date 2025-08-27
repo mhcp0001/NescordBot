@@ -374,6 +374,45 @@ class CreateFTS5IndexMigration(Migration):
         await connection.execute("DROP TABLE IF EXISTS knowledge_notes_fts")
 
 
+class CreateSearchHistoryMigration(Migration):
+    """Migration 006: Create search history table."""
+
+    def __init__(self):
+        super().__init__(
+            version=6,
+            name="create_search_history",
+            description="Create search_history table for tracking user searches",
+        )
+
+    async def up(self, connection: aiosqlite.Connection) -> None:
+        """Create search_history table."""
+        await connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS search_history (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                query TEXT NOT NULL,
+                results_count INTEGER NOT NULL DEFAULT 0,
+                execution_time_ms REAL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+
+        # Create index for efficient history queries
+        await connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_search_history_user_time
+            ON search_history(user_id, timestamp DESC)
+        """
+        )
+
+    async def down(self, connection: aiosqlite.Connection) -> None:
+        """Drop search_history table."""
+        await connection.execute("DROP INDEX IF EXISTS idx_search_history_user_time")
+        await connection.execute("DROP TABLE IF EXISTS search_history")
+
+
 class DatabaseMigrationManager:
     """
     Database migration management system.
@@ -404,6 +443,7 @@ class DatabaseMigrationManager:
             CreateTokenUsageMigration(),
             ExtendTranscriptionsMigration(),
             CreateFTS5IndexMigration(),
+            CreateSearchHistoryMigration(),
         ]
 
         # Verify version sequence

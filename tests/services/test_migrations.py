@@ -480,7 +480,7 @@ class TestDatabaseServiceIntegration:
         await cursor.close()
 
         # Should have applied 5 migrations
-        assert result[0] == 5
+        assert result[0] == 6
 
         # Check new tables exist
         cursor = await service.connection.execute(
@@ -649,8 +649,8 @@ class TestMigrationEdgeCases:
         """Test migration on completely empty database."""
         result = await migration_manager.migrate_to_latest()
 
-        assert result["applied"] == 5  # All 5 migrations applied
-        assert result["current_version"] == 5
+        assert result["applied"] == 6  # All 6 migrations applied
+        assert result["current_version"] == 6
 
     @pytest.mark.asyncio
     async def test_already_migrated_database(self, migration_manager):
@@ -662,7 +662,7 @@ class TestMigrationEdgeCases:
         result = await migration_manager.migrate_to_latest()
 
         assert result["applied"] == 0  # No new migrations
-        assert result["current_version"] == 5
+        assert result["current_version"] == 6
 
     @pytest.mark.asyncio
     async def test_partial_migration_rollback(self, migration_manager):
@@ -673,7 +673,7 @@ class TestMigrationEdgeCases:
         # Rollback to version 3
         result = await migration_manager.rollback_to_version(3)
 
-        assert result["rolled_back"] == 2  # Versions 4 and 5 rolled back
+        assert result["rolled_back"] == 3  # Versions 4, 5, and 6 rolled back
         assert result["current_version"] == 3
 
     @pytest.mark.asyncio
@@ -690,12 +690,12 @@ class TestMigrationEdgeCases:
         status = await migration_manager.get_migration_status()
 
         assert status["current_version"] == 3
-        assert status["latest_version"] == 5
+        assert status["latest_version"] == 6
         assert status["applied_migrations"] == 3
-        assert status["pending_migrations"] == 2
+        assert status["pending_migrations"] == 3
         assert status["integrity_valid"] is True
         assert len(status["migrations"]["applied"]) == 3
-        assert len(status["migrations"]["pending"]) == 2
+        assert len(status["migrations"]["pending"]) == 3
 
 
 @pytest.mark.asyncio

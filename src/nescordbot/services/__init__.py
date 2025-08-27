@@ -17,6 +17,15 @@ from .knowledge_manager import KnowledgeManager, KnowledgeManagerError
 from .note_processing import NoteProcessingService
 from .obsidian_github import ObsidianGitHubService, ObsidianSyncStatus
 from .persistent_queue import FileRequest, PersistentQueue
+from .search_engine import (
+    SearchEngine,
+    SearchEngineError,
+    SearchFilters,
+    SearchHistory,
+    SearchQueryError,
+)
+from .search_engine import SearchResult as SearchEngineResult
+from .search_engine import SearchTimeoutError
 from .service_container import (
     ServiceContainer,
     ServiceInitializationError,
@@ -61,6 +70,13 @@ __all__ = [
     "SecurityValidator",
     "KnowledgeManager",
     "KnowledgeManagerError",
+    "SearchEngine",
+    "SearchEngineError",
+    "SearchEngineResult",
+    "SearchFilters",
+    "SearchHistory",
+    "SearchQueryError",
+    "SearchTimeoutError",
     "ServiceContainer",
     "ServiceNotFoundError",
     "ServiceInitializationError",
