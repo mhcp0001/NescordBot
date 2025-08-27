@@ -16,6 +16,9 @@ from ..config import BotConfig
 from .chromadb_service import ChromaDBService
 from .database import DatabaseService
 from .embedding import EmbeddingService
+from .link_graph_builder import LinkCluster, LinkGraphBuilder
+from .link_suggestor import LinkSuggestor
+from .link_validator import LinkValidationResult, LinkValidator
 from .obsidian_github import ObsidianGitHubService
 from .sync_manager import SyncManager
 
@@ -72,6 +75,11 @@ class KnowledgeManager:
         self.link_pattern = re.compile(r"\[\[([^\]]+)\]\]")
         self.tag_pattern = re.compile(r"#(\w+)")
 
+        # Initialize link management services
+        self.link_suggestor = LinkSuggestor(database_service)
+        self.link_validator = LinkValidator(database_service)
+        self.link_graph_builder = LinkGraphBuilder(database_service)
+
     async def initialize(self) -> None:
         """Initialize async resources and verify dependencies."""
         if self._initialized:
@@ -95,6 +103,11 @@ class KnowledgeManager:
                 )
                 if not await cursor.fetchone():
                     raise KnowledgeManagerError("note_links table not found")
+
+            # Initialize link management services
+            await self.link_suggestor.initialize()
+            await self.link_validator.initialize()
+            await self.link_graph_builder.initialize()
 
             self._initialized = True
             logger.info("KnowledgeManager initialized successfully")
@@ -837,6 +850,198 @@ updated: {note["updated_at"]}
 
         except Exception as e:
             return {"status": "unhealthy", "error": str(e)}
+
+    # Link Management Methods
+
+    async def suggest_links_for_note(
+        self, note_id: str, max_suggestions: int = 5, min_similarity: float = 0.3
+    ) -> List[Dict[str, Any]]:
+        """
+        Suggest potential links for a note based on content similarity.
+
+        Args:
+            note_id: ID of the note to suggest links for
+            max_suggestions: Maximum number of suggestions to return
+            min_similarity: Minimum similarity threshold (0.0-1.0)
+
+        Returns:
+            List of suggested notes with similarity scores
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_suggestor.suggest_links_for_note(
+            note_id, max_suggestions, min_similarity
+        )
+
+    async def suggest_links_by_content(
+        self, content: str, exclude_note_id: Optional[str] = None, max_suggestions: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Suggest notes based on content keywords.
+
+        Args:
+            content: Content to analyze for keywords
+            exclude_note_id: Note ID to exclude from suggestions
+            max_suggestions: Maximum number of suggestions
+
+        Returns:
+            List of suggested notes
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_suggestor.suggest_by_content_keywords(
+            content, exclude_note_id, max_suggestions
+        )
+
+    async def validate_all_links(self) -> LinkValidationResult:
+        """
+        Validate all links in the knowledge base.
+
+        Returns:
+            Comprehensive validation results
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_validator.validate_all_links()
+
+    async def validate_note_links(self, note_id: str) -> Dict[str, Any]:
+        """
+        Validate links for a specific note.
+
+        Args:
+            note_id: ID of the note to validate
+
+        Returns:
+            Validation results for the specific note
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_validator.validate_note_links(note_id)
+
+    async def find_missing_bidirectional_links(self) -> List[Dict[str, Any]]:
+        """
+        Find links that should be bidirectional but aren't.
+
+        Returns:
+            List of missing reverse links
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_validator.find_missing_bidirectional_links()
+
+    async def repair_broken_links(self, validation_result: LinkValidationResult) -> Dict[str, int]:
+        """
+        Repair broken links by removing invalid entries.
+
+        Args:
+            validation_result: Result from validate_all_links()
+
+        Returns:
+            Count of repaired items
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_validator.repair_broken_links(validation_result)
+
+    async def build_link_graph(self, include_orphans: bool = False):
+        """
+        Build a directed graph from note links.
+
+        Args:
+            include_orphans: Whether to include notes without links
+
+        Returns:
+            NetworkX directed graph
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_graph_builder.build_graph(include_orphans)
+
+    async def find_note_clusters(self, min_cluster_size: int = 3) -> List[LinkCluster]:
+        """
+        Find clusters of highly connected notes.
+
+        Args:
+            min_cluster_size: Minimum number of notes in a cluster
+
+        Returns:
+            List of identified clusters
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_graph_builder.find_clusters(min_cluster_size)
+
+    async def find_central_notes(self, top_n: int = 10) -> List[Dict[str, Any]]:
+        """
+        Find the most central/important notes in the graph.
+
+        Args:
+            top_n: Number of top central notes to return
+
+        Returns:
+            List of notes with centrality scores
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_graph_builder.find_central_notes(top_n)
+
+    async def find_shortest_path(self, from_note_id: str, to_note_id: str) -> Optional[List[str]]:
+        """
+        Find shortest path between two notes.
+
+        Args:
+            from_note_id: Starting note ID
+            to_note_id: Target note ID
+
+        Returns:
+            List of note IDs in the shortest path, or None if no path exists
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_graph_builder.find_shortest_path(from_note_id, to_note_id)
+
+    async def get_graph_metrics(self) -> Dict[str, Any]:
+        """
+        Get overall graph metrics and statistics.
+
+        Returns:
+            Dictionary with graph metrics
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_graph_builder.get_graph_metrics()
+
+    async def suggest_bridge_notes(
+        self, cluster1_id: str, cluster2_id: str, clusters: List[LinkCluster]
+    ) -> List[Dict[str, Any]]:
+        """
+        Suggest notes that could bridge two clusters.
+
+        Args:
+            cluster1_id: First cluster ID
+            cluster2_id: Second cluster ID
+            clusters: List of all clusters
+
+        Returns:
+            List of potential bridge notes
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        return await self.link_graph_builder.suggest_bridge_notes(
+            cluster1_id, cluster2_id, clusters
+        )
 
     async def close(self) -> None:
         """Clean up resources."""

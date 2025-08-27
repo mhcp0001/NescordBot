@@ -489,6 +489,196 @@ class PKMCog(commands.Cog):
 
         return notes
 
+    @app_commands.command(name="link_suggest", description="ノートのリンク候補を提案します")
+    @app_commands.describe(
+        note_title="リンク候補を提案するノートのタイトル（部分一致可）",
+        max_suggestions="提案する最大数（1-10）",
+        min_similarity="最小類似度（0.1-1.0）",
+    )
+    async def link_suggest_command(
+        self,
+        interaction: discord.Interaction,
+        note_title: str,
+        max_suggestions: int = 5,
+        min_similarity: float = 0.3,
+    ) -> None:
+        """Suggest links for a note based on content similarity."""
+        if not await self._check_services(interaction):
+            return
+
+        try:
+            await interaction.response.defer()
+
+            assert self.knowledge_manager is not None, "KnowledgeManager not initialized"
+
+            # Find note by title
+            notes = await self.knowledge_manager.search_notes(note_title, limit=5)
+            if not notes:
+                await interaction.followup.send(f"❌ ノート「{note_title}」が見つかりませんでした。", ephemeral=True)
+                return
+
+            # Use the first match
+            target_note = notes[0]
+            note_id = target_note["id"]
+
+            # Validate parameters
+            max_suggestions = max(1, min(10, max_suggestions))
+            min_similarity = max(0.1, min(1.0, min_similarity))
+
+            # Get suggestions
+            suggestions = await self.knowledge_manager.suggest_links_for_note(
+                note_id, max_suggestions, min_similarity
+            )
+
+            # Create embed
+            embed = PKMEmbed.create_link_suggestions(target_note, suggestions)
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Link suggestion failed: {e}")
+            await interaction.followup.send(f"❌ リンク提案の取得に失敗しました: {e}", ephemeral=True)
+
+    @app_commands.command(name="link_validate", description="ノートリンクの整合性を検証します")
+    @app_commands.describe(note_title="検証するノートのタイトル（省略時は全体検証）")
+    async def link_validate_command(
+        self, interaction: discord.Interaction, note_title: Optional[str] = None
+    ) -> None:
+        """Validate note links for broken references."""
+        if not await self._check_services(interaction):
+            return
+
+        try:
+            await interaction.response.defer()
+
+            assert self.knowledge_manager is not None, "KnowledgeManager not initialized"
+
+            if note_title:
+                # Validate specific note
+                notes = await self.knowledge_manager.search_notes(note_title, limit=1)
+                if not notes:
+                    await interaction.followup.send(
+                        f"❌ ノート「{note_title}」が見つかりませんでした。", ephemeral=True
+                    )
+                    return
+
+                note_id = notes[0]["id"]
+                note_result = await self.knowledge_manager.validate_note_links(note_id)
+                embed = PKMEmbed.create_note_link_validation(notes[0], note_result)
+
+            else:
+                # Validate all links
+                validation_result = await self.knowledge_manager.validate_all_links()
+                embed = PKMEmbed.create_link_validation_summary(validation_result)
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Link validation failed: {e}")
+            await interaction.followup.send(f"❌ リンク検証に失敗しました: {e}", ephemeral=True)
+
+    @app_commands.command(name="link_graph", description="ノートのつながりをグラフで分析します")
+    @app_commands.describe(analysis_type="分析タイプ", top_n="上位N件（中心性分析用）")
+    @app_commands.choices(
+        analysis_type=[
+            app_commands.Choice(name="中心性分析（重要なノートを発見）", value="centrality"),
+            app_commands.Choice(name="クラスター分析（関連ノートのグループ）", value="clusters"),
+            app_commands.Choice(name="グラフ統計（全体の分析）", value="metrics"),
+        ]
+    )
+    async def link_graph_command(
+        self, interaction: discord.Interaction, analysis_type: str, top_n: int = 10
+    ) -> None:
+        """Analyze note connections using graph theory."""
+        if not await self._check_services(interaction):
+            return
+
+        try:
+            await interaction.response.defer()
+
+            assert self.knowledge_manager is not None, "KnowledgeManager not initialized"
+
+            # Validate top_n
+            top_n = max(5, min(20, top_n))
+
+            if analysis_type == "centrality":
+                # Find most central notes
+                central_notes = await self.knowledge_manager.find_central_notes(top_n)
+                embed = PKMEmbed.create_centrality_analysis(central_notes)
+
+            elif analysis_type == "clusters":
+                # Find note clusters
+                clusters = await self.knowledge_manager.find_note_clusters(min_cluster_size=3)
+                embed = PKMEmbed.create_cluster_analysis(clusters[:10])  # Show top 10 clusters
+
+            elif analysis_type == "metrics":
+                # Get overall graph metrics
+                metrics = await self.knowledge_manager.get_graph_metrics()
+                embed = PKMEmbed.create_graph_metrics(metrics)
+
+            else:
+                await interaction.followup.send("❌ 無効な分析タイプです。", ephemeral=True)
+                return
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Graph analysis failed: {e}")
+            await interaction.followup.send(f"❌ グラフ分析に失敗しました: {e}", ephemeral=True)
+
+    @app_commands.command(name="link_path", description="2つのノート間の最短経路を検索します")
+    @app_commands.describe(from_note="開始ノートのタイトル", to_note="終了ノートのタイトル")
+    async def link_path_command(
+        self, interaction: discord.Interaction, from_note: str, to_note: str
+    ) -> None:
+        """Find shortest path between two notes."""
+        if not await self._check_services(interaction):
+            return
+
+        try:
+            await interaction.response.defer()
+
+            assert self.knowledge_manager is not None, "KnowledgeManager not initialized"
+
+            # Find both notes
+            from_notes = await self.knowledge_manager.search_notes(from_note, limit=1)
+            to_notes = await self.knowledge_manager.search_notes(to_note, limit=1)
+
+            if not from_notes:
+                await interaction.followup.send(f"❌ 開始ノート「{from_note}」が見つかりませんでした。", ephemeral=True)
+                return
+
+            if not to_notes:
+                await interaction.followup.send(f"❌ 終了ノート「{to_note}」が見つかりませんでした。", ephemeral=True)
+                return
+
+            from_id = from_notes[0]["id"]
+            to_id = to_notes[0]["id"]
+
+            # Find shortest path
+            path = await self.knowledge_manager.find_shortest_path(from_id, to_id)
+
+            if path is None:
+                embed = discord.Embed(
+                    title="🚫 パスが見つかりません",
+                    description=f"「{from_notes[0]['title']}」から「{to_notes[0]['title']}」への経路は存在しません。",
+                    color=discord.Color.orange(),
+                )
+            else:
+                # Get note details for path
+                path_notes = []
+                for note_id in path:
+                    note = await self.knowledge_manager.get_note(note_id)
+                    if note:
+                        path_notes.append(note)
+
+                embed = PKMEmbed.create_path_analysis(from_notes[0], to_notes[0], path_notes)
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Path finding failed: {e}")
+            await interaction.followup.send(f"❌ 経路検索に失敗しました: {e}", ephemeral=True)
+
 
 async def setup(bot: commands.Bot) -> None:
     """Setup function for loading the cog."""
