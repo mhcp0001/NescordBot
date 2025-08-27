@@ -298,10 +298,10 @@ class NoteSelectionModal(discord.ui.Modal):
                     if self.km is None:
                         await interaction.response.send_message("サービスが初期化されていません", ephemeral=True)
                         return
-                    note = await self.km.get_note(result.note_id)
-                    if note is not None:
-                        embed = PKMEmbed.note_detail(note)
-                        view = PKMNoteView(note, self.km, self.user_id)
+                    retrieved_note = await self.km.get_note(result.note_id)
+                    if retrieved_note is not None:
+                        embed = PKMEmbed.note_detail(retrieved_note)
+                        view = PKMNoteView(retrieved_note, self.km, self.user_id)
                         await interaction.response.send_message(
                             embed=embed, view=view, ephemeral=True
                         )
