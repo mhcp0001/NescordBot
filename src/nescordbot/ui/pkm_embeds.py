@@ -89,8 +89,6 @@ class PKMEmbed:
                 if note.get("tags"):
                     try:
                         if isinstance(note["tags"], str):
-                            import json
-
                             tags = (
                                 json.loads(note["tags"])
                                 if note["tags"].startswith("[")
@@ -163,8 +161,6 @@ class PKMEmbed:
         if note.get("tags"):
             try:
                 if isinstance(note["tags"], str):
-                    import json
-
                     tags = (
                         json.loads(note["tags"])
                         if note["tags"].startswith("[")
