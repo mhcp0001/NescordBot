@@ -61,7 +61,7 @@ class PKMCog(commands.Cog):
             service_container = getattr(self.bot, "service_container", None)
             if not service_container:
                 raise RuntimeError("ServiceContainer not found in bot instance")
-            
+
             # Type assertion for mypy
             assert isinstance(service_container, ServiceContainer)
 
@@ -148,7 +148,7 @@ class PKMCog(commands.Cog):
                         await interaction.followup.send(embed=embed, ephemeral=True)
                         return
 
-            # Create note  
+            # Create note
             assert self.knowledge_manager is not None
             note_id = await asyncio.wait_for(
                 self.knowledge_manager.create_note(
@@ -164,7 +164,10 @@ class PKMCog(commands.Cog):
             # Success response
             created_at = datetime.now()
             embed = PKMEmbed.note_created(
-                note_id=note_id, title=title, created_at=created_at, note_type=note_type or "fleeting"
+                note_id=note_id,
+                title=title,
+                created_at=created_at,
+                note_type=note_type or "fleeting",
             )
 
             # Get full note data for view
@@ -448,7 +451,7 @@ class PKMCog(commands.Cog):
     ) -> List[Dict[str, Any]]:
         """Get filtered notes list."""
         assert self.knowledge_manager is not None
-        
+
         if tag:
             # Tag-based filtering
             notes = await self.knowledge_manager.get_notes_by_tag(tag, limit=limit * 2)
