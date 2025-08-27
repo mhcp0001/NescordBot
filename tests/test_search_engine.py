@@ -34,7 +34,7 @@ class TestSearchEngine:
         """Create mock bot configuration."""
         # Use a proper format Discord token for testing
         return BotConfig(
-            discord_token="FAKE_DISCORD_TOKEN.testing.not_real_token_for_unit_tests_only",
+            discord_token="MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234",
             openai_api_key="sk-test_fake_key_not_real_for_testing_only_abcdef123456",
             log_level="DEBUG",
         )
