@@ -135,6 +135,10 @@ class LinkValidator:
             await self.initialize()
 
         try:
+            # Initialize variables early to avoid UnboundLocalError
+            outgoing_rows = []
+            incoming_rows = []
+
             async with self.db.get_connection() as conn:
                 # Check if note exists
                 cursor = await conn.execute(

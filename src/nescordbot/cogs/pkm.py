@@ -88,6 +88,15 @@ class PKMCog(commands.Cog):
         except Exception as e:
             logger.error(f"PKMCog initialization failed: {e}")
 
+    async def _check_services(self, interaction: discord.Interaction) -> bool:
+        """Check if services are properly initialized."""
+        if not self._initialized or self.knowledge_manager is None:
+            await interaction.response.send_message(
+                "❌ PKMサービスが初期化されていません。しばらく待ってから再試行してください。", ephemeral=True
+            )
+            return False
+        return True
+
     # PKM Command Group
     pkm_group = app_commands.Group(name="pkm", description="Personal Knowledge Management commands")
 

@@ -56,6 +56,8 @@ class LinkSuggestor:
             await self.initialize()
 
         try:
+            candidates: List[Dict[str, Any]] = []  # Initialize early to avoid UnboundLocalError
+
             # Get the source note
             async with self.db.get_connection() as conn:
                 cursor = await conn.execute(
@@ -369,6 +371,8 @@ class LinkSuggestor:
             Health status information
         """
         try:
+            note_count = 0  # Initialize early to avoid UnboundLocalError
+
             if not self._initialized:
                 await self.initialize()
 
