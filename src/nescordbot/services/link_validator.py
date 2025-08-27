@@ -134,11 +134,12 @@ class LinkValidator:
         if not self._initialized:
             await self.initialize()
 
-        try:
-            # Initialize variables early to avoid UnboundLocalError
-            outgoing_rows = []
-            incoming_rows = []
+        # Initialize variables to avoid UnboundLocalError
+        outgoing_rows = []
+        incoming_rows = []
+        note_info = {}
 
+        try:
             async with self.db.get_connection() as conn:
                 # Check if note exists
                 cursor = await conn.execute(
@@ -326,6 +327,8 @@ class LinkValidator:
         for row in rows:
             try:
                 tags = json.loads(row[3]) if row[3] else []
+                if not isinstance(tags, list):
+                    tags = []
             except (json.JSONDecodeError, TypeError):
                 tags = []
 

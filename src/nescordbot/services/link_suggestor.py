@@ -55,9 +55,10 @@ class LinkSuggestor:
         if not self._initialized:
             await self.initialize()
 
-        try:
-            candidates: List[Dict[str, Any]] = []  # Initialize early to avoid UnboundLocalError
+        # Initialize variables to avoid UnboundLocalError
+        candidates: List[Dict[str, Any]] = []
 
+        try:
             # Get the source note
             async with self.db.get_connection() as conn:
                 cursor = await conn.execute(
