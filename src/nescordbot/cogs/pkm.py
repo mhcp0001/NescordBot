@@ -19,6 +19,7 @@ from ..services import (
     SearchQueryError,
     ServiceContainer,
 )
+from ..services.search_engine import SearchMode
 from ..ui.pkm_embeds import PKMEmbed
 from ..ui.pkm_views import PKMHelpView, PKMListView, PKMNoteView, SearchResultView
 
@@ -206,6 +207,8 @@ class PKMCog(commands.Cog):
         limit="検索結果数（1-20、デフォルト: 5）",
         note_type="ノートタイプフィルタ（all/permanent/fleeting）",
         min_score="最小スコア（0.0-1.0、デフォルト: 0.1）",
+        search_mode="検索モード（hybrid/vector/keyword、デフォルト: hybrid）",
+        alpha="ベクトル重み（0.0-1.0、デフォルト: 0.7）",
     )
     @app_commands.choices(
         note_type=[
@@ -213,7 +216,12 @@ class PKMCog(commands.Cog):
             app_commands.Choice(name="永続ノート", value="permanent"),
             app_commands.Choice(name="一時ノート", value="fleeting"),
             app_commands.Choice(name="リンク", value="link"),
-        ]
+        ],
+        search_mode=[
+            app_commands.Choice(name="ハイブリッド（推奨）", value="hybrid"),
+            app_commands.Choice(name="ベクトル検索", value="vector"),
+            app_commands.Choice(name="キーワード検索", value="keyword"),
+        ],
     )
     async def search_command(
         self,
@@ -222,6 +230,8 @@ class PKMCog(commands.Cog):
         limit: Optional[app_commands.Range[int, MIN_SEARCH_LIMIT, MAX_SEARCH_LIMIT]] = 5,
         note_type: Optional[str] = "all",
         min_score: Optional[app_commands.Range[float, 0.0, 1.0]] = 0.1,
+        search_mode: Optional[str] = "hybrid",
+        alpha: Optional[app_commands.Range[float, 0.0, 1.0]] = None,
     ) -> None:
         """Search notes with hybrid search.
 
@@ -255,10 +265,18 @@ class PKMCog(commands.Cog):
                 min_score=min_score,
             )
 
+            # Convert search mode string to enum
+            try:
+                mode = SearchMode(search_mode)
+            except ValueError:
+                mode = SearchMode.HYBRID
+
             # Perform search
             assert self.search_engine is not None
             search_results = await asyncio.wait_for(
-                self.search_engine.hybrid_search(query=query, limit=limit, filters=filters),
+                self.search_engine.hybrid_search(
+                    query=query, mode=mode, alpha=alpha, limit=limit, filters=filters
+                ),
                 timeout=COMMAND_TIMEOUT,
             )
 
@@ -285,7 +303,8 @@ class PKMCog(commands.Cog):
                 await interaction.followup.send(embed=embed)
 
             logger.info(
-                f"Search completed: user={user_id}, query='{query[:50]}...', results={len(search_results)}"
+                f"Search completed: user={user_id}, query='{query[:50]}...', "
+                f"results={len(search_results)}"
             )
 
         except asyncio.TimeoutError:

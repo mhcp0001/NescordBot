@@ -11,7 +11,7 @@ from discord.ext import commands
 
 from src.nescordbot.cogs.pkm import PKMCog
 from src.nescordbot.services import KnowledgeManager, SearchEngine, SearchFilters
-from src.nescordbot.services.search_engine import SearchResult
+from src.nescordbot.services.search_engine import SearchMode, SearchResult
 from src.nescordbot.ui.pkm_embeds import PKMEmbed
 
 
@@ -119,8 +119,9 @@ class TestPKMCog:
     ) -> PKMCog:
         """Create PKMCog instance with mocked dependencies."""
         cog = PKMCog(mock_bot)
-        cog.knowledge_manager = mock_knowledge_manager
-        cog.search_engine = mock_search_engine
+        # Properly cast mocks to satisfy type checker
+        cog.knowledge_manager = mock_knowledge_manager  # type: ignore[assignment]
+        cog.search_engine = mock_search_engine  # type: ignore[assignment]
         cog._initialized = True
         return cog
 
@@ -151,7 +152,7 @@ class TestPKMCog:
         mock_interaction.response.defer.assert_called_once()
 
         # Verify knowledge manager was called correctly
-        pkm_cog.knowledge_manager.create_note.assert_called_once_with(
+        pkm_cog.knowledge_manager.create_note.assert_called_once_with(  # type: ignore[union-attr]
             title="Test Note",
             content="This is a test note content",
             tags=["test", "mock"],
@@ -202,8 +203,8 @@ class TestPKMCog:
         mock_interaction.response.defer.assert_called_once()
 
         # Verify search was performed
-        pkm_cog.search_engine.hybrid_search.assert_called_once()
-        call_args = pkm_cog.search_engine.hybrid_search.call_args
+        pkm_cog.search_engine.hybrid_search.assert_called_once()  # type: ignore[union-attr]
+        call_args = pkm_cog.search_engine.hybrid_search.call_args  # type: ignore[union-attr]
         assert call_args[1]["query"] == "test query"
         assert call_args[1]["limit"] == 5
 
@@ -213,12 +214,99 @@ class TestPKMCog:
         assert "view" in call_args[1]
 
     @pytest.mark.asyncio
+    async def test_search_command_with_mode_and_alpha(
+        self, pkm_cog: PKMCog, mock_interaction: AsyncMock
+    ) -> None:
+        """Test search command with search mode and alpha parameters."""
+        # Execute command with new parameters
+        await pkm_cog.search_command.callback(
+            pkm_cog,
+            interaction=mock_interaction,
+            query="advanced test query",
+            limit=10,
+            note_type="permanent",
+            min_score=0.3,
+            search_mode="vector",
+            alpha=0.8,
+        )
+
+        # Verify defer was called
+        mock_interaction.response.defer.assert_called_once()
+
+        # Verify search was performed with correct parameters
+        pkm_cog.search_engine.hybrid_search.assert_called_once()  # type: ignore[union-attr]
+        call_args = pkm_cog.search_engine.hybrid_search.call_args  # type: ignore[union-attr]
+
+        # Check basic parameters
+        assert call_args[1]["query"] == "advanced test query"
+        assert call_args[1]["limit"] == 10
+        assert call_args[1]["alpha"] == 0.8
+        assert call_args[1]["mode"] == SearchMode.VECTOR
+
+        # Check filters
+        filters = call_args[1]["filters"]
+        assert filters is not None
+        assert filters.content_type == "permanent"
+        assert filters.min_score == 0.3
+
+        # Verify response was sent
+        mock_interaction.followup.send.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_search_command_different_modes(
+        self, pkm_cog: PKMCog, mock_interaction: AsyncMock
+    ) -> None:
+        """Test search command with different search modes."""
+        # Test vector mode
+        await pkm_cog.search_command.callback(
+            pkm_cog,
+            interaction=mock_interaction,
+            query="vector query",
+            search_mode="vector",
+        )
+
+        call_args = pkm_cog.search_engine.hybrid_search.call_args  # type: ignore[union-attr]
+        assert call_args[1]["mode"] == SearchMode.VECTOR
+
+        # Reset mock for next test
+        pkm_cog.search_engine.hybrid_search.reset_mock()  # type: ignore[union-attr]
+        mock_interaction.reset_mock()
+
+        # Test keyword mode
+        await pkm_cog.search_command.callback(
+            pkm_cog,
+            interaction=mock_interaction,
+            query="keyword query",
+            search_mode="keyword",
+        )
+
+        call_args = pkm_cog.search_engine.hybrid_search.call_args  # type: ignore[union-attr]
+        assert call_args[1]["mode"] == SearchMode.KEYWORD
+
+        # Reset mock for next test
+        pkm_cog.search_engine.hybrid_search.reset_mock()  # type: ignore[union-attr]
+        mock_interaction.reset_mock()
+
+        # Test hybrid mode (default)
+        await pkm_cog.search_command.callback(
+            pkm_cog,
+            interaction=mock_interaction,
+            query="hybrid query",
+            search_mode="hybrid",
+        )
+
+        call_args = pkm_cog.search_engine.hybrid_search.call_args  # type: ignore[union-attr]
+        assert call_args[1]["mode"] == SearchMode.HYBRID
+
+    @pytest.mark.asyncio
     async def test_search_command_no_results(
         self, pkm_cog: PKMCog, mock_interaction: AsyncMock
     ) -> None:
         """Test search with no results."""
         # Mock empty search results
-        pkm_cog.search_engine.hybrid_search = AsyncMock(return_value=[])
+        pkm_cog.search_engine.hybrid_search = AsyncMock(  # type: ignore[method-assign,union-attr]
+            return_value=[]
+        )
 
         # Execute command
         await pkm_cog.search_command.callback(
@@ -248,7 +336,7 @@ class TestPKMCog:
         mock_interaction.response.defer.assert_called_once()
 
         # Verify list was fetched
-        pkm_cog.knowledge_manager.list_notes.assert_called_once()
+        pkm_cog.knowledge_manager.list_notes.assert_called_once()  # type: ignore[union-attr]
 
         # Verify response was sent with view
         mock_interaction.followup.send.assert_called_once()
@@ -261,7 +349,7 @@ class TestPKMCog:
     ) -> None:
         """Test note listing with tag filter."""
         # Mock tag-based results
-        pkm_cog.knowledge_manager.get_notes_by_tag = AsyncMock(
+        manager_mock = AsyncMock(  # type: ignore[method-assign,union-attr]
             return_value=[
                 {
                     "id": "tagged_note",
@@ -272,6 +360,8 @@ class TestPKMCog:
                 }
             ]
         )
+        # Assign mock method
+        pkm_cog.knowledge_manager.get_notes_by_tag = manager_mock  # type: ignore[method-assign,union-attr]  # noqa: E501
 
         # Execute command with tag filter
         await pkm_cog.list_command.callback(
@@ -279,9 +369,7 @@ class TestPKMCog:
         )
 
         # Verify tag search was used
-        pkm_cog.knowledge_manager.get_notes_by_tag.assert_called_once_with(
-            "specific_tag", limit=20  # limit * 2
-        )
+        manager_mock.assert_called_once_with("specific_tag", limit=20)  # limit * 2
 
     @pytest.mark.asyncio
     async def test_help_command(self, pkm_cog: PKMCog, mock_interaction: AsyncMock) -> None:
@@ -324,7 +412,7 @@ class TestPKMCog:
     ) -> None:
         """Test timeout handling in commands."""
         # Mock timeout in knowledge manager
-        pkm_cog.knowledge_manager.create_note = AsyncMock(
+        pkm_cog.knowledge_manager.create_note = AsyncMock(  # type: ignore[method-assign,union-attr]
             side_effect=asyncio.TimeoutError("Operation timed out")
         )
 
@@ -347,7 +435,7 @@ class TestPKMCog:
         # Mock KnowledgeManagerError
         from src.nescordbot.services import KnowledgeManagerError
 
-        pkm_cog.knowledge_manager.create_note = AsyncMock(
+        pkm_cog.knowledge_manager.create_note = AsyncMock(  # type: ignore[method-assign,union-attr]
             side_effect=KnowledgeManagerError("Database error")
         )
 
