@@ -43,8 +43,8 @@ class TestVoiceTranscriptionIntegration:
     async def test_transcribe_with_whisper(self, voice_cog_whisper):
         """WhisperでのVoiceCog文字起こしテスト。"""
         # TranscriptionServiceをモック
-        mock_transcription = AsyncMock()
-        mock_transcription.transcribe.return_value = "Whisperによる文字起こし"
+        mock_transcription = MagicMock()
+        mock_transcription.transcribe = AsyncMock(return_value="Whisperによる文字起こし")
         mock_transcription.is_available.return_value = True
         mock_transcription.provider_name = "whisper"
 
@@ -66,8 +66,8 @@ class TestVoiceTranscriptionIntegration:
     async def test_transcribe_with_gemini(self, voice_cog_gemini):
         """GeminiでのVoiceCog文字起こしテスト。"""
         # TranscriptionServiceをモック
-        mock_transcription = AsyncMock()
-        mock_transcription.transcribe.return_value = "Geminiによる文字起こし"
+        mock_transcription = MagicMock()
+        mock_transcription.transcribe = AsyncMock(return_value="Geminiによる文字起こし")
         mock_transcription.is_available.return_value = True
         mock_transcription.provider_name = "gemini"
 
