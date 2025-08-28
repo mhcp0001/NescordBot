@@ -51,6 +51,7 @@ jobs:
         cp .env.example .env.test
         echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
         echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
+        echo "GEMINI_API_KEY=test-gemini-key" >> .env.test
         echo "LOG_LEVEL=DEBUG" >> .env.test
 
     - name: Run code formatting check (Black)
@@ -69,6 +70,7 @@ jobs:
       env:
         DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
         OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         LOG_LEVEL: DEBUG
       run: |
         poetry run pytest tests/ \
@@ -78,8 +80,7 @@ jobs:
           --cov-report=html \
           --cov-report=term-missing \
           --junit-xml=test-results.xml \
-          -m "not slow and not network" \
-          -n auto
+          -m "not slow and not network"
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -167,6 +168,7 @@ jobs:
         # Create test environment file for Docker
         echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" > .env.docker
         echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.docker
+        echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.docker
         echo "LOG_LEVEL=DEBUG" >> .env.docker
 
     - name: Run integration tests in Docker
@@ -181,8 +183,7 @@ jobs:
               --verbose \
               -m 'integration' \
               --maxfail=3 \
-              --junit-xml=/app/test-results/docker-integration-results.xml \
-              -n auto || true
+              --junit-xml=/app/test-results/docker-integration-results.xml || true
           "
 
     - name: Test bot startup and environment validation
