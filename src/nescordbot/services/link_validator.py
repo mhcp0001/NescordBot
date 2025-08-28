@@ -134,24 +134,22 @@ class LinkValidator:
         if not self._initialized:
             await self.initialize()
 
-        # Initialize variables to avoid UnboundLocalError
-        outgoing_rows = []
-        incoming_rows = []
-        note_info = {}
-
         try:
+            # Check if note exists first
             async with self.db.get_connection() as conn:
-                # Check if note exists
                 cursor = await conn.execute(
                     "SELECT id, title FROM knowledge_notes WHERE id = ?", (note_id,)
                 )
                 note_row = await cursor.fetchone()
 
-                if not note_row:
-                    raise LinkValidationError(f"Note {note_id} not found")
+            # Check outside the context manager to avoid exception suppression
+            if not note_row:
+                raise LinkValidationError(f"Note {note_id} not found")
 
-                note_info = {"id": note_row[0], "title": note_row[1]}
+            # Initialize variables after we know note exists
+            note_info = {"id": note_row[0], "title": note_row[1]}
 
+            async with self.db.get_connection() as conn:
                 # Get outgoing links
                 cursor = await conn.execute(
                     """
@@ -176,55 +174,58 @@ class LinkValidator:
                 )
                 incoming_rows = await cursor.fetchall()
 
-            # Analyze links
-            broken_outgoing = []
-            valid_outgoing = []
+                # Analyze links
+                broken_outgoing = []
+                valid_outgoing = []
 
-            for row in outgoing_rows:
-                link_data = {
-                    "link_id": row[0],
-                    "target_id": row[1],
-                    "link_type": row[2],
-                    "target_title": row[3],
+                for row in outgoing_rows:
+                    link_data = {
+                        "link_id": row[0],
+                        "target_id": row[1],
+                        "link_type": row[2],
+                        "target_title": row[3],
+                    }
+
+                    if row[3] is None:  # Target note doesn't exist
+                        broken_outgoing.append(link_data)
+                    else:
+                        valid_outgoing.append(link_data)
+
+                broken_incoming = []
+                valid_incoming = []
+
+                for row in incoming_rows:
+                    link_data = {
+                        "link_id": row[0],
+                        "source_id": row[1],
+                        "link_type": row[2],
+                        "source_title": row[3],
+                    }
+
+                    if row[3] is None:  # Source note doesn't exist
+                        broken_incoming.append(link_data)
+                    else:
+                        valid_incoming.append(link_data)
+
+                return {
+                    "note": note_info,
+                    "outgoing_links": {
+                        "valid": valid_outgoing,
+                        "broken": broken_outgoing,
+                        "count": len(valid_outgoing),
+                    },
+                    "incoming_links": {
+                        "valid": valid_incoming,
+                        "broken": broken_incoming,
+                        "count": len(valid_incoming),
+                    },
+                    "is_orphan": len(valid_outgoing) == 0 and len(valid_incoming) == 0,
+                    "total_broken": len(broken_outgoing) + len(broken_incoming),
                 }
 
-                if row[3] is None:  # Target note doesn't exist
-                    broken_outgoing.append(link_data)
-                else:
-                    valid_outgoing.append(link_data)
-
-            broken_incoming = []
-            valid_incoming = []
-
-            for row in incoming_rows:
-                link_data = {
-                    "link_id": row[0],
-                    "source_id": row[1],
-                    "link_type": row[2],
-                    "source_title": row[3],
-                }
-
-                if row[3] is None:  # Source note doesn't exist
-                    broken_incoming.append(link_data)
-                else:
-                    valid_incoming.append(link_data)
-
-            return {
-                "note": note_info,
-                "outgoing_links": {
-                    "valid": valid_outgoing,
-                    "broken": broken_outgoing,
-                    "count": len(valid_outgoing),
-                },
-                "incoming_links": {
-                    "valid": valid_incoming,
-                    "broken": broken_incoming,
-                    "count": len(valid_incoming),
-                },
-                "is_orphan": len(valid_outgoing) == 0 and len(valid_incoming) == 0,
-                "total_broken": len(broken_outgoing) + len(broken_incoming),
-            }
-
+        except LinkValidationError:
+            # Re-raise LinkValidationError as-is to preserve error semantics
+            raise
         except Exception as e:
             logger.error(f"Failed to validate links for note {note_id}: {e}")
             raise LinkValidationError(f"Failed to validate note links: {e}")

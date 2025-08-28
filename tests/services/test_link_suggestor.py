@@ -64,17 +64,12 @@ class TestLinkSuggestor:
         suggestor = LinkSuggestor(db)
         await suggestor.initialize()
 
-        # Reset mock to fresh state and set up specific behavior
-        mock_cursor.reset_mock()
+        # Set up mock to return None for fetchone (note not found)
         mock_cursor.fetchone = AsyncMock(return_value=None)
-        mock_conn.execute = AsyncMock(return_value=mock_cursor)
 
-        # Due to UnboundLocalError fixes, method now returns empty list instead of raising
-        # Test that it handles non-existent notes gracefully
-        result = await suggestor.suggest_links_for_note("test-id")
-
-        # Should return empty suggestions list
-        assert result == []
+        # Should raise LinkSuggestionError for non-existent note
+        with pytest.raises(LinkSuggestionError, match="Note test-id not found"):
+            await suggestor.suggest_links_for_note("test-id")
 
     @pytest.mark.asyncio
     async def test_suggest_links_for_note_success(self, link_suggestor):
@@ -274,9 +269,9 @@ class TestLinkSuggestor:
 
         health = await suggestor.health_check()
 
-        # Due to the UnboundLocalError fixes, health check might complete successfully
-        # even with database errors due to early variable initialization
-        assert health["status"] in ["healthy", "unhealthy"]  # Allow both outcomes
+        # Should properly report unhealthy status when database errors occur
+        assert health["status"] == "unhealthy"
+        assert "error" in health
         assert health["initialized"] is True
 
     @pytest.mark.asyncio

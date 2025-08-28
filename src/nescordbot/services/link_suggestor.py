@@ -55,27 +55,27 @@ class LinkSuggestor:
         if not self._initialized:
             await self.initialize()
 
-        # Initialize variables to avoid UnboundLocalError
-        candidates: List[Dict[str, Any]] = []
-
         try:
-            # Get the source note
+            # Check if note exists first
             async with self.db.get_connection() as conn:
                 cursor = await conn.execute(
                     "SELECT id, title, content, tags FROM knowledge_notes WHERE id = ?", (note_id,)
                 )
                 source_row = await cursor.fetchone()
 
-                if not source_row:
-                    raise LinkSuggestionError(f"Note {note_id} not found")
+            # Check outside the context manager to avoid exception suppression
+            if not source_row:
+                raise LinkSuggestionError(f"Note {note_id} not found")
 
-                source_note = {
-                    "id": source_row[0],
-                    "title": source_row[1],
-                    "content": source_row[2],
-                    "tags": self._parse_tags(source_row[3]),
-                }
+            # Proceed with processing
+            source_note = {
+                "id": source_row[0],
+                "title": source_row[1],
+                "content": source_row[2],
+                "tags": self._parse_tags(source_row[3]),
+            }
 
+            async with self.db.get_connection() as conn:
                 # Get all other notes (excluding current one and already linked)
                 cursor = await conn.execute(
                     """
@@ -92,6 +92,7 @@ class LinkSuggestor:
                 )
                 candidate_rows = await cursor.fetchall()
 
+                # Initialize candidates after we know source note exists
                 candidates = []
                 for row in candidate_rows:
                     candidates.append(
@@ -103,27 +104,30 @@ class LinkSuggestor:
                         }
                     )
 
-            # Calculate similarity scores
-            suggestions = []
-            for candidate in candidates:
-                similarity_score = self._calculate_similarity(source_note, candidate)
+                # Calculate similarity scores
+                suggestions = []
+                for candidate in candidates:
+                    similarity_score = self._calculate_similarity(source_note, candidate)
 
-                if similarity_score >= min_similarity:
-                    suggestions.append(
-                        {
-                            "note_id": candidate["id"],
-                            "title": candidate["title"],
-                            "similarity_score": similarity_score,
-                            "similarity_reasons": self._get_similarity_reasons(
-                                source_note, candidate
-                            ),
-                        }
-                    )
+                    if similarity_score >= min_similarity:
+                        suggestions.append(
+                            {
+                                "note_id": candidate["id"],
+                                "title": candidate["title"],
+                                "similarity_score": similarity_score,
+                                "similarity_reasons": self._get_similarity_reasons(
+                                    source_note, candidate
+                                ),
+                            }
+                        )
 
-            # Sort by similarity score and return top suggestions
-            suggestions.sort(key=lambda x: x["similarity_score"], reverse=True)
-            return suggestions[:max_suggestions]
+                # Sort by similarity score and return top suggestions
+                suggestions.sort(key=lambda x: x["similarity_score"], reverse=True)
+                return suggestions[:max_suggestions]
 
+        except LinkSuggestionError:
+            # Re-raise LinkSuggestionError as-is to preserve error semantics
+            raise
         except Exception as e:
             logger.error(f"Failed to suggest links for note {note_id}: {e}")
             raise LinkSuggestionError(f"Failed to suggest links: {e}")
@@ -372,15 +376,16 @@ class LinkSuggestor:
             Health status information
         """
         try:
-            note_count = 0  # Initialize early to avoid UnboundLocalError
-
             if not self._initialized:
                 await self.initialize()
 
             # Test basic functionality
             async with self.db.get_connection() as conn:
                 cursor = await conn.execute("SELECT COUNT(*) FROM knowledge_notes")
-                note_count = (await cursor.fetchone())[0]
+                result = await cursor.fetchone()
+
+            # Process result outside context manager to allow exceptions to propagate
+            note_count = result[0]
 
             return {
                 "status": "healthy",

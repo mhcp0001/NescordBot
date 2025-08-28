@@ -176,19 +176,12 @@ class TestLinkValidator:
         validator = LinkValidator(db)
         await validator.initialize()
 
-        # Reset mock to fresh state and set up specific behavior
-        mock_cursor.reset_mock()
+        # Set up mock to return None for fetchone (note not found)
         mock_cursor.fetchone = AsyncMock(return_value=None)
-        mock_conn.execute = AsyncMock(return_value=mock_cursor)
 
-        # Due to UnboundLocalError fixes, method now returns result instead of raising
-        # Test that it handles non-existent notes gracefully
-        result = await validator.validate_note_links("test-id")
-
-        # Should return a result with empty note info due to initialization
-        assert result["note"] == {}
-        assert result["outgoing_links"]["valid"] == []
-        assert result["incoming_links"]["valid"] == []
+        # Should raise LinkValidationError for non-existent note
+        with pytest.raises(LinkValidationError, match="Note test-id not found"):
+            await validator.validate_note_links("test-id")
 
     @pytest.mark.asyncio
     async def test_find_missing_bidirectional_links(self, link_validator):
