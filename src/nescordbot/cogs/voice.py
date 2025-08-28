@@ -1,4 +1,3 @@
-import asyncio
 import io
 import logging
 import os
@@ -24,9 +23,16 @@ class Voice(commands.Cog):
         note_processing_service: Optional[NoteProcessingService] = None,
     ):
         self.bot = bot
-        self.openai_client: Optional[OpenAI] = None
         self.obsidian_service = obsidian_service
         self.note_processing_service = note_processing_service
+
+        # TranscriptionServiceを初期化
+        from ..services.transcription import get_transcription_service
+
+        self.transcription_service = get_transcription_service()
+
+        # 後方互換性のためにopenai_clientも保持（setup_openaiで初期化）
+        self.openai_client: Optional[OpenAI] = None
         self.setup_openai()
 
     def setup_openai(self):
@@ -38,32 +44,23 @@ class Voice(commands.Cog):
             logging.getLogger(__name__).warning("OpenAI APIキーが設定されていません")
 
     async def transcribe_audio(self, audio_path: str) -> Optional[str]:
-        """音声ファイルを文字起こし"""
-        if not self.openai_client:
+        """音声ファイルを文字起こし（TranscriptionServiceを使用）"""
+        if not self.transcription_service.is_available():
+            logging.getLogger(__name__).warning(
+                f"TranscriptionService ({self.transcription_service.provider_name}) が利用できません"
+            )
             return None
 
         try:
-            # OpenAI Whisper APIを使用 (v1.0+)
-            with open(audio_path, "rb") as audio_file:
-                transcript = await asyncio.to_thread(
-                    self.openai_client.audio.transcriptions.create,
-                    model="whisper-1",
-                    file=audio_file,
-                    language="ja",
-                    timeout=30.0,  # タイムアウト設定
+            result = await self.transcription_service.transcribe(audio_path)
+            if result:
+                logging.getLogger(__name__).info(
+                    f"文字起こし完了 (プロバイダー: {self.transcription_service.provider_name}): "
+                    f"{len(result)}文字"
                 )
-
-            return transcript.text if transcript else None
-
-        except TimeoutError:
-            logging.getLogger(__name__).error("音声認識タイムアウト: 処理時間が30秒を超えました")
-            return None
+            return result
         except Exception as e:
-            # レート制限エラーのチェック
-            if "rate_limit" in str(e).lower() or "429" in str(e):
-                logging.getLogger(__name__).warning(f"OpenAI APIレート制限: {e}")
-            else:
-                logging.getLogger(__name__).error(f"音声認識エラー: {e}")
+            logging.getLogger(__name__).error(f"TranscriptionService文字起こしエラー: {e}")
             return None
 
     async def process_with_ai(self, text: str) -> dict:
