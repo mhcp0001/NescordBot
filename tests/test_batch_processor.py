@@ -71,6 +71,8 @@ async def batch_processor(mock_config, mock_db_service, mock_auth_manager, mock_
         mock_queue.start_processing = AsyncMock()
         mock_queue.stop_processing = AsyncMock()
         mock_queue.cleanup = AsyncMock()
+        # set_git_service is a synchronous method, use MagicMock
+        mock_queue.set_git_service = MagicMock()
         mock_queue_class.return_value = mock_queue
 
         processor = BatchProcessor(
