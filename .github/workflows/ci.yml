@@ -52,7 +52,7 @@ jobs:
         cp .env.example .env.test
         echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
         echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
-        echo "GEMINI_API_KEY=test-gemini-key" >> .env.test
+        # GEMINI_API_KEYを設定しない - テストハング問題回避のため
         echo "LOG_LEVEL=DEBUG" >> .env.test
 
     - name: Run code formatting check (Black)
@@ -71,7 +71,7 @@ jobs:
       env:
         DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
         OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
-        GEMINI_API_KEY: test-gemini-key
+        # GEMINI_API_KEYを設定しない - テストハング問題回避のため
         LOG_LEVEL: DEBUG
       run: |
         poetry run pytest tests/ \
