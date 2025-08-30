@@ -7,12 +7,20 @@ on:
     branches: [ main, develop, 'feature/phase*' ]
 
 jobs:
-  test:
+  # テストを5つのグループに分割してハング問題を回避
+  test-group:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
+        test-group: [
+          "transcription",
+          "database-service",
+          "cogs-bot",
+          "github-obsidian",
+          "others"
+        ]
 
     steps:
     - name: Checkout code
@@ -74,28 +82,39 @@ jobs:
         # GEMINI_API_KEYを設定しない - テストハング問題回避のため
         LOG_LEVEL: DEBUG
       run: |
-        poetry run pytest tests/ \
-          -vvv \
-          --capture=no \
-          -n 0 \
+        # テストグループ別にファイルを分割
+        if [ "${{ matrix.test-group }}" = "transcription" ]; then
+          TEST_FILES="tests/services/transcription/ tests/cogs/test_voice_transcription_integration.py tests/test_voice.py tests/test_voice_regression.py"
+        elif [ "${{ matrix.test-group }}" = "database-service" ]; then
+          TEST_FILES="tests/services/test_chromadb_service.py tests/services/test_embedding.py tests/services/test_knowledge_manager.py tests/services/test_link_graph_builder.py tests/services/test_link_suggestor.py tests/services/test_link_validator.py tests/services/test_migrations.py tests/services/test_note_processing.py tests/services/test_service_container.py tests/services/test_sync_manager.py tests/services/test_token_manager.py tests/test_database_service.py"
+        elif [ "${{ matrix.test-group }}" = "cogs-bot" ]; then
+          TEST_FILES="tests/cogs/test_pkm.py tests/test_admin_cog.py tests/test_admin_functionality.py tests/test_bot.py tests/test_bot_integration.py tests/test_cogs_general.py tests/test_text_cog.py tests/test_text_integration.py"
+        elif [ "${{ matrix.test-group }}" = "github-obsidian" ]; then
+          TEST_FILES="tests/test_github_auth.py tests/test_services_github.py tests/test_git_operations.py tests/test_obsidian_github.py tests/test_obsidian_github_integration.py tests/test_obsidian_service_injection.py tests/test_batch_processor.py tests/test_persistent_queue.py"
+        else
+          TEST_FILES="tests/test_config.py tests/test_logger.py tests/test_note_processing.py tests/test_debug_command.py tests/test_railway_persistence.py tests/test_run.py tests/test_search_engine.py"
+        fi
+
+        poetry run pytest $TEST_FILES \
+          --forked \
           --tb=short \
           --cov=src \
           --cov-report=xml \
           --cov-report=html \
           --cov-report=term-missing \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-${{ matrix.test-group }}.xml \
           -m "not slow and not network" \
-          --timeout=600 \
+          --timeout=30 \
           --timeout-method=thread \
-          -p faulthandler
+          -v
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: test-results-${{ matrix.python-version }}
+        name: test-results-${{ matrix.python-version }}-${{ matrix.test-group }}
         path: |
-          test-results.xml
+          test-results-${{ matrix.test-group }}.xml
           htmlcov/
           .coverage
 
