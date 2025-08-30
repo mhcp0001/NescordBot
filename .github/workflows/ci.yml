@@ -75,7 +75,9 @@ jobs:
         LOG_LEVEL: DEBUG
       run: |
         poetry run pytest tests/ \
-          --verbose \
+          -vvv \
+          --capture=no \
+          -n 0 \
           --tb=short \
           --cov=src \
           --cov-report=xml \
