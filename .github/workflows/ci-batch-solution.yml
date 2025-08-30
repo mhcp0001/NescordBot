@@ -1,0 +1,226 @@
+name: CI Batch Solution
+
+on:
+  push:
+    branches: [ 'feature/108-gemini-audio-migration' ]
+  pull_request:
+    branches: [ 'feature/108-gemini-audio-migration' ]
+
+jobs:
+  # Batch 1: transcription + database + basic services  
+  test-batch-1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Set up test environment
+      run: |
+        mkdir -p data logs
+        cp .env.example .env.test
+        echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
+        echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
+        echo "LOG_LEVEL=DEBUG" >> .env.test
+
+    - name: Run Batch 1 Tests
+      env:
+        DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
+        OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+        LOG_LEVEL: DEBUG
+      run: |
+        poetry run pytest \
+          tests/services/transcription/ \
+          tests/test_voice.py \
+          tests/test_voice_regression.py \
+          tests/services/test_chromadb_service.py \
+          tests/services/test_embedding.py \
+          tests/services/test_knowledge_manager.py \
+          tests/services/test_database_service.py \
+          tests/test_config.py \
+          tests/test_logger.py \
+          --tb=short -v \
+          -m "not slow and not network" \
+          --maxprocesses=2 \
+          --timeout=120
+
+  # Batch 2: github + obsidian + git operations
+  test-batch-2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Set up test environment
+      run: |
+        mkdir -p data logs
+        cp .env.example .env.test
+        echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
+        echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
+        echo "LOG_LEVEL=DEBUG" >> .env.test
+
+    - name: Run Batch 2 Tests
+      env:
+        DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
+        OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+        LOG_LEVEL: DEBUG
+      run: |
+        poetry run pytest \
+          tests/test_github_auth.py \
+          tests/test_services_github.py \
+          tests/test_git_operations.py \
+          tests/test_obsidian_github.py \
+          tests/test_obsidian_github_integration.py \
+          tests/test_obsidian_service_injection.py \
+          tests/test_batch_processor.py \
+          tests/test_persistent_queue.py \
+          --tb=short -v \
+          -m "not slow and not network" \
+          --maxprocesses=2 \
+          --timeout=120
+
+  # Batch 3: bot + cogs + remaining tests
+  test-batch-3:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Set up test environment
+      run: |
+        mkdir -p data logs
+        cp .env.example .env.test
+        echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
+        echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
+        echo "LOG_LEVEL=DEBUG" >> .env.test
+
+    - name: Run Batch 3 Tests
+      env:
+        DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
+        OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+        LOG_LEVEL: DEBUG
+      run: |
+        poetry run pytest \
+          tests/cogs/ \
+          tests/test_admin_cog.py \
+          tests/test_admin_functionality.py \
+          tests/test_bot.py \
+          tests/test_bot_integration.py \
+          tests/test_cogs_general.py \
+          tests/test_text_cog.py \
+          tests/test_text_integration.py \
+          tests/services/test_link_graph_builder.py \
+          tests/services/test_link_suggestor.py \
+          tests/services/test_link_validator.py \
+          tests/services/test_migrations.py \
+          tests/services/test_note_processing.py \
+          tests/services/test_service_container.py \
+          tests/services/test_sync_manager.py \
+          tests/services/test_token_manager.py \
+          tests/test_note_processing.py \
+          tests/test_debug_command.py \
+          tests/test_railway_persistence.py \
+          tests/test_run.py \
+          tests/test_search_engine.py \
+          --tb=short -v \
+          -m "not slow and not network" \
+          --maxprocesses=2 \
+          --timeout=120
+
+  # Quality checks (runs on one Python version only)
+  quality-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Run code formatting check (Black)
+      run: poetry run black --check src/ tests/
+
+    - name: Run import sorting check (isort)  
+      run: poetry run isort --check-only src/ tests/
+
+    - name: Run linting (flake8)
+      run: poetry run flake8 src/ tests/
+
+    - name: Run type checking (mypy)
+      run: poetry run mypy src/ --ignore-missing-imports
