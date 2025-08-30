@@ -1,0 +1,66 @@
+name: CI GitHub Obsidian Test
+
+on:
+  push:
+    branches: [ 'feature/108-gemini-audio-migration' ]
+  pull_request:
+    branches: [ 'feature/108-gemini-audio-migration' ]
+
+jobs:
+  test-github-obsidian-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Set up test environment
+      run: |
+        mkdir -p data
+        mkdir -p logs
+        cp .env.example .env.test
+        echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
+        echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
+        echo "LOG_LEVEL=DEBUG" >> .env.test
+
+    - name: Run github-obsidian tests only
+      env:
+        DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
+        OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+        LOG_LEVEL: DEBUG
+      run: |
+        poetry run pytest \
+          tests/test_github_auth.py \
+          tests/test_services_github.py \
+          tests/test_git_operations.py \
+          tests/test_obsidian_github.py \
+          tests/test_obsidian_github_integration.py \
+          tests/test_obsidian_service_injection.py \
+          tests/test_batch_processor.py \
+          tests/test_persistent_queue.py \
+          --forked \
+          --tb=short \
+          -m "not slow and not network" \
+          --timeout=60 \
+          --timeout-method=thread \
+          -v
