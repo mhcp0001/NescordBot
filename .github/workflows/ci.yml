@@ -82,7 +82,10 @@ jobs:
           --cov-report=html \
           --cov-report=term-missing \
           --junit-xml=test-results.xml \
-          -m "not slow and not network"
+          -m "not slow and not network" \
+          --timeout=600 \
+          --timeout-method=thread \
+          -p faulthandler
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
