@@ -1,0 +1,70 @@
+name: CI Database Service Test
+
+on:
+  push:
+    branches: [ 'feature/108-gemini-audio-migration' ]
+  pull_request:
+    branches: [ 'feature/108-gemini-audio-migration' ]
+
+jobs:
+  test-database-service-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+
+    - name: Install dependencies
+      run: poetry install --no-interaction
+
+    - name: Set up test environment
+      run: |
+        mkdir -p data
+        mkdir -p logs
+        cp .env.example .env.test
+        echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
+        echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
+        echo "LOG_LEVEL=DEBUG" >> .env.test
+
+    - name: Run database-service tests only
+      env:
+        DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
+        OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
+        LOG_LEVEL: DEBUG
+      run: |
+        poetry run pytest \
+          tests/services/test_chromadb_service.py \
+          tests/services/test_embedding.py \
+          tests/services/test_knowledge_manager.py \
+          tests/services/test_link_graph_builder.py \
+          tests/services/test_link_suggestor.py \
+          tests/services/test_link_validator.py \
+          tests/services/test_migrations.py \
+          tests/services/test_note_processing.py \
+          tests/services/test_service_container.py \
+          tests/services/test_sync_manager.py \
+          tests/services/test_token_manager.py \
+          tests/test_database_service.py \
+          --forked \
+          --tb=short \
+          -m "not slow and not network" \
+          --timeout=60 \
+          --timeout-method=thread \
+          -v
