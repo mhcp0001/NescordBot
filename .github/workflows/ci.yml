@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop, phase2-development ]
+    branches: [ main, develop, phase2-development, 'feature/108-gemini-audio-migration' ]
   pull_request:
-    branches: [ main, develop, 'feature/phase*' ]
+    branches: [ main, develop, 'feature/phase*', 'feature/108-gemini-audio-migration' ]
 
 jobs:
   # テストを5つのグループに分割してハング問題を回避
