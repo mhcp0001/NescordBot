@@ -71,7 +71,7 @@ jobs:
       env:
         DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
         OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
-        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        GEMINI_API_KEY: test-gemini-key
         LOG_LEVEL: DEBUG
       run: |
         poetry run pytest tests/ \
