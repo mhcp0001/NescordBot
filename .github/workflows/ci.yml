@@ -7,20 +7,13 @@ on:
     branches: [ main, develop, 'feature/phase*', 'feature/108-gemini-audio-migration' ]
 
 jobs:
-  # テストを5つのグループに分割してハング問題を回避
-  test-group:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       matrix:
         python-version: ["3.11", "3.12"]
-        test-group: [
-          "transcription",
-          "database-service",
-          "cogs-bot",
-          "github-obsidian",
-          "others"
-        ]
+      fail-fast: false  # Continue other jobs if one fails
 
     steps:
     - name: Checkout code
@@ -31,13 +24,16 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
-    - name: Install Poetry
+    - name: Install Poetry with retry
       uses: snok/install-poetry@v1
       with:
         version: latest
         virtualenvs-create: true
         virtualenvs-in-project: true
         installer-parallel: true
+      env:
+        # Increase timeout for Poetry installation
+        POETRY_HTTP_TIMEOUT: 300
 
     - name: Load cached venv
       id: cached-poetry-dependencies
@@ -45,22 +41,39 @@ jobs:
       with:
         path: .venv
         key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          venv-${{ runner.os }}-${{ matrix.python-version }}-
 
-    - name: Install dependencies
+    - name: Install dependencies with retry
       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-      run: poetry install --no-interaction --no-root
+      run: |
+        # Retry logic for Poetry install
+        for i in {1..3}; do
+          if poetry install --no-interaction --no-root; then
+            echo "Poetry install succeeded on attempt $i"
+            break
+          else
+            echo "Poetry install failed on attempt $i"
+            if [ $i -eq 3 ]; then
+              echo "Poetry install failed after 3 attempts"
+              exit 1
+            fi
+            sleep 30
+          fi
+        done
+      env:
+        POETRY_HTTP_TIMEOUT: 300
+        POETRY_REQUESTS_TIMEOUT: 300
 
     - name: Install project
       run: poetry install --no-interaction
 
     - name: Set up test environment
       run: |
-        mkdir -p data
-        mkdir -p logs
+        mkdir -p data logs
         cp .env.example .env.test
         echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
         echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
-        # GEMINI_API_KEYを設定しない - テストハング問題回避のため
         echo "LOG_LEVEL=DEBUG" >> .env.test
 
     - name: Run code formatting check (Black)
@@ -79,42 +92,30 @@ jobs:
       env:
         DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
         OPENAI_API_KEY: sk-abcdef1234567890abcdef1234567890abcdef1234567890ab
-        # GEMINI_API_KEYを設定しない - テストハング問題回避のため
         LOG_LEVEL: DEBUG
       run: |
-        # テストグループ別にファイルを分割
-        if [ "${{ matrix.test-group }}" = "transcription" ]; then
-          TEST_FILES="tests/services/transcription/ tests/cogs/test_voice_transcription_integration.py tests/test_voice.py tests/test_voice_regression.py"
-        elif [ "${{ matrix.test-group }}" = "database-service" ]; then
-          TEST_FILES="tests/services/test_chromadb_service.py tests/services/test_embedding.py tests/services/test_knowledge_manager.py tests/services/test_link_graph_builder.py tests/services/test_link_suggestor.py tests/services/test_link_validator.py tests/services/test_migrations.py tests/services/test_note_processing.py tests/services/test_service_container.py tests/services/test_sync_manager.py tests/services/test_token_manager.py tests/test_database_service.py"
-        elif [ "${{ matrix.test-group }}" = "cogs-bot" ]; then
-          TEST_FILES="tests/cogs/test_pkm.py tests/test_admin_cog.py tests/test_admin_functionality.py tests/test_bot.py tests/test_bot_integration.py tests/test_cogs_general.py tests/test_text_cog.py tests/test_text_integration.py"
-        elif [ "${{ matrix.test-group }}" = "github-obsidian" ]; then
-          TEST_FILES="tests/test_github_auth.py tests/test_services_github.py tests/test_git_operations.py tests/test_obsidian_github.py tests/test_obsidian_github_integration.py tests/test_obsidian_service_injection.py tests/test_batch_processor.py tests/test_persistent_queue.py"
-        else
-          TEST_FILES="tests/test_config.py tests/test_logger.py tests/test_note_processing.py tests/test_debug_command.py tests/test_railway_persistence.py tests/test_run.py tests/test_search_engine.py"
-        fi
-
-        poetry run pytest $TEST_FILES \
+        poetry run pytest tests/ \
           --forked \
           --tb=short \
           --cov=src \
           --cov-report=xml \
           --cov-report=html \
           --cov-report=term-missing \
-          --junit-xml=test-results-${{ matrix.test-group }}.xml \
+          --junit-xml=test-results-${{ matrix.python-version }}.xml \
           -m "not slow and not network" \
-          --timeout=30 \
+          --timeout=60 \
           --timeout-method=thread \
+          --maxfail=5 \
+          -n auto \
           -v
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: test-results-${{ matrix.python-version }}-${{ matrix.test-group }}
+        name: test-results-${{ matrix.python-version }}
         path: |
-          test-results-${{ matrix.test-group }}.xml
+          test-results-${{ matrix.python-version }}.xml
           htmlcov/
           .coverage
 
@@ -129,6 +130,7 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -142,9 +144,13 @@ jobs:
       uses: snok/install-poetry@v1
       with:
         version: latest
+      env:
+        POETRY_HTTP_TIMEOUT: 300
 
     - name: Install dependencies
       run: poetry install --no-interaction
+      env:
+        POETRY_HTTP_TIMEOUT: 300
 
     - name: Run security checks (bandit)
       run: |
@@ -170,6 +176,7 @@ jobs:
   docker-integration-test:
     runs-on: ubuntu-latest
     needs: test
+    timeout-minutes: 15
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
 
     steps:
@@ -209,6 +216,7 @@ jobs:
               --verbose \
               -m 'integration' \
               --maxfail=3 \
+              --timeout=120 \
               --junit-xml=/app/test-results/docker-integration-results.xml || true
           "
 

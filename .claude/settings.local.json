@@ -16,7 +16,8 @@
       "Bash(git push:*)",
       "Bash(gh pr checks:*)",
       "mcp__serena__write_memory",
-      "mcp__serena__read_memory"
+      "mcp__serena__read_memory",
+      "mcp__serena__list_memories"
     ],
     "deny": [],
     "ask": []

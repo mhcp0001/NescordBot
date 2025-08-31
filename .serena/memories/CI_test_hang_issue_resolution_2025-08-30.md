@@ -61,7 +61,7 @@ run: |
 # 修正前
 GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-# 修正後  
+# 修正後
 GEMINI_API_KEY: test-gemini-key  # ダミー値に固定
 ```
 
