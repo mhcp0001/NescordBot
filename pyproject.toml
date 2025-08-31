@@ -48,6 +48,8 @@ bandit = {extras = ["toml"], version = "^1.7.5"}
 safety = "^2.3.5"
 ruff = "^0.12.9"
 pytest-xdist = "^3.8.0"
+pytest-timeout = "^2.1.0"
+pytest-forked = "^1.6.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

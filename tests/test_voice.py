@@ -92,64 +92,68 @@ class TestTranscribeAudio:
     @pytest.mark.asyncio
     async def test_transcribe_audio_success(self, voice_cog):
         """正常な文字起こしのテスト"""
-        # モックレスポンスの設定
-        mock_transcript = MagicMock()
-        mock_transcript.text = "これはテスト音声です"
+        # TranscriptionService全体をモック
+        mock_service = MagicMock()
+        mock_service.provider_name = "whisper"
+        mock_service.transcribe = AsyncMock(return_value="これはテスト音声です")
+        mock_service.is_available = MagicMock(return_value=True)
 
-        voice_cog.openai_client.audio.transcriptions.create = MagicMock(
-            return_value=mock_transcript
-        )
+        voice_cog.transcription_service = mock_service
 
-        with patch("builtins.open", create=True) as mock_open:
-            mock_file = MagicMock()
-            mock_open.return_value.__enter__.return_value = mock_file
+        result = await voice_cog.transcribe_audio("test.ogg")
 
-            result = await voice_cog.transcribe_audio("test.ogg")
-
-            assert result == "これはテスト音声です"
-            voice_cog.openai_client.audio.transcriptions.create.assert_called_once_with(
-                model="whisper-1", file=mock_file, language="ja", timeout=30.0
-            )
+        assert result == "これはテスト音声です"
+        mock_service.transcribe.assert_called_once_with("test.ogg")
 
     @pytest.mark.asyncio
     async def test_transcribe_audio_no_client(self, voice_cog_no_api):
-        """クライアントがない場合のテスト"""
+        """TranscriptionServiceが利用不可の場合のテスト"""
+        mock_service = MagicMock()
+        mock_service.provider_name = "whisper"
+        mock_service.is_available = MagicMock(return_value=False)
+
+        voice_cog_no_api.transcription_service = mock_service
+
         result = await voice_cog_no_api.transcribe_audio("test.ogg")
         assert result is None
 
     @pytest.mark.asyncio
     async def test_transcribe_audio_timeout(self, voice_cog):
         """タイムアウトエラーのテスト"""
-        voice_cog.openai_client.audio.transcriptions.create = MagicMock(
-            side_effect=TimeoutError("Timeout")
-        )
+        mock_service = MagicMock()
+        mock_service.provider_name = "whisper"
+        mock_service.transcribe = AsyncMock(side_effect=TimeoutError("Timeout"))
+        mock_service.is_available = MagicMock(return_value=True)
 
-        with patch("builtins.open", create=True):
-            with patch("logging.getLogger") as mock_get_logger:
-                mock_logger = MagicMock()
-                mock_get_logger.return_value = mock_logger
+        voice_cog.transcription_service = mock_service
 
-                result = await voice_cog.transcribe_audio("test.ogg")
+        with patch("logging.getLogger") as mock_get_logger:
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
 
-                assert result is None
-                mock_logger.error.assert_called_once()
+            result = await voice_cog.transcribe_audio("test.ogg")
+
+            assert result is None
+            mock_logger.error.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_transcribe_audio_rate_limit(self, voice_cog):
         """レート制限エラーのテスト"""
-        voice_cog.openai_client.audio.transcriptions.create = MagicMock(
-            side_effect=Exception("rate_limit_exceeded")
-        )
+        mock_service = MagicMock()
+        mock_service.provider_name = "whisper"
+        mock_service.transcribe = AsyncMock(side_effect=Exception("rate_limit_exceeded"))
+        mock_service.is_available = MagicMock(return_value=True)
 
-        with patch("builtins.open", create=True):
-            with patch("logging.getLogger") as mock_get_logger:
-                mock_logger = MagicMock()
-                mock_get_logger.return_value = mock_logger
+        voice_cog.transcription_service = mock_service
 
-                result = await voice_cog.transcribe_audio("test.ogg")
+        with patch("logging.getLogger") as mock_get_logger:
+            mock_logger = MagicMock()
+            mock_get_logger.return_value = mock_logger
 
-                assert result is None
-                mock_logger.warning.assert_called_once()
+            result = await voice_cog.transcribe_audio("test.ogg")
+
+            assert result is None
+            mock_logger.error.assert_called_once()
 
 
 class TestProcessWithAI:
