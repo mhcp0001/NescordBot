@@ -2,9 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop, phase2-development, 'feature/108-gemini-audio-migration' ]
+    branches:
+      - main
+      - develop
+      - 'feature/**'     # All feature branches (type/issue-number-description)
+      - 'fix/**'         # All fix branches
+      - 'hotfix/**'      # All hotfix branches
+      - 'release/**'     # All release branches
   pull_request:
-    branches: [ main, develop, 'feature/phase*', 'feature/108-gemini-audio-migration' ]
+    branches:
+      - main
+      - develop
+      - 'feature/phase*' # Phase integration branches
+      - 'release/**'     # Release branches
 
 jobs:
   test:

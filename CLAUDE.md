@@ -215,6 +215,21 @@ gh pr merge --auto --squash --delete-branch
   - `feature/123-admin-commands`
   - `fix/456-voice-api-error`
   - `docs/789-update-readme`
+  - `hotfix/101-security-patch`
+  - `release/v1.2.0`
+
+#### CI実行対象ブランチ
+**Push時**: 以下のパターンでCI自動実行
+- `main`, `develop` - メインブランチ
+- `feature/**` - 全featureブランチ（Issue番号付き推奨）
+- `fix/**` - 全fixブランチ
+- `hotfix/**` - 全hotfixブランチ
+- `release/**` - 全releaseブランチ
+
+**Pull Request時**: 以下のブランチへのPRでCI実行
+- `main`, `develop` - メインブランチ向け
+- `feature/phase*` - Phase統合ブランチ向け
+- `release/**` - リリースブランチ向け
 
 #### Phase Integration Strategy (Advanced) - 2025-08-25追加
 大規模機能開発時の推奨戦略：
