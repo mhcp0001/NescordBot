@@ -10,7 +10,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, cast
 
 from ..config import BotConfig
 from .chromadb_service import ChromaDBService
@@ -51,6 +51,7 @@ class KnowledgeManager:
         embedding_service: EmbeddingService,
         sync_manager: SyncManager,
         obsidian_github_service: ObsidianGitHubService,
+        fallback_manager: Optional[Any] = None,
     ) -> None:
         """
         Initialize KnowledgeManager.
@@ -62,6 +63,7 @@ class KnowledgeManager:
             embedding_service: Embedding service for text vectorization
             sync_manager: Synchronization manager for data consistency
             obsidian_github_service: ObsidianGitHub service for external storage
+            fallback_manager: Optional fallback manager for API limiting
         """
         self.config = config
         self.db = database_service
@@ -69,6 +71,7 @@ class KnowledgeManager:
         self.embedding = embedding_service
         self.sync_manager = sync_manager
         self.obsidian_github = obsidian_github_service
+        self.fallback_manager = fallback_manager
         self._initialized = False
 
         # Link and tag extraction patterns
@@ -416,7 +419,7 @@ class KnowledgeManager:
         max_suggestions: int = 5,
     ) -> List[Dict[str, Any]]:
         """
-        Suggest tags for content using AI analysis.
+        Suggest tags for content using AI analysis with fallback support.
 
         Args:
             content: Text content to analyze
@@ -431,6 +434,23 @@ class KnowledgeManager:
             return []
 
         try:
+            # Check fallback manager for tag suggestion availability
+            if self.fallback_manager and not self.fallback_manager.is_service_available(
+                "tag_suggestion"
+            ):
+                logger.info("Tag suggestion service unavailable due to API limits, checking cache")
+                # Try to get cached suggestions
+                cache_key = f"{hash(content + title)}"
+                cached_suggestions = await self.fallback_manager.get_cached_data(
+                    "tag_suggestions", cache_key
+                )
+                if cached_suggestions:
+                    logger.info("Returning cached tag suggestions")
+                    return cast(List[Dict[str, Any]], cached_suggestions[:max_suggestions])
+                else:
+                    logger.warning("No cached tag suggestions available, returning basic tags")
+                    return self._generate_basic_tag_suggestions(content, title, existing_tags or [])
+
             # Prepare content for analysis
             analysis_text = f"Title: {title}\n\nContent: {content}" if title else content
 
@@ -459,10 +479,28 @@ class KnowledgeManager:
                 suggestions, existing_tags or [], all_existing_tags
             )
 
-            return filtered_suggestions[:max_suggestions]
+            final_suggestions = filtered_suggestions[:max_suggestions]
+
+            # Cache the suggestions for fallback
+            if self.fallback_manager:
+                cache_key = f"{hash(content + title)}"
+                await self.fallback_manager.cache_data(
+                    "tag_suggestions", cache_key, final_suggestions
+                )
+
+            return final_suggestions
 
         except Exception as e:
             logger.error(f"Error in tag suggestion: {str(e)}")
+            # Try fallback cache on error
+            if self.fallback_manager:
+                cache_key = f"{hash(content + title)}"
+                cached_suggestions = await self.fallback_manager.get_cached_data(
+                    "tag_suggestions", cache_key
+                )
+                if cached_suggestions:
+                    logger.info("Returning cached tag suggestions due to error")
+                    return cast(List[Dict[str, Any]], cached_suggestions[:max_suggestions])
             return []
 
     async def auto_categorize_notes(
@@ -651,6 +689,64 @@ TAG2: [信頼度0.0-1.0] - 理由
 
         # Sort by confidence
         return sorted(filtered, key=lambda x: x["confidence"], reverse=True)
+
+    def _generate_basic_tag_suggestions(
+        self, content: str, title: str, existing_tags: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate basic tag suggestions without AI when API is limited.
+
+        This method provides simple keyword-based tag suggestions as a fallback
+        when the AI service is unavailable due to API limits.
+
+        Args:
+            content: Text content to analyze
+            title: Title of the content
+            existing_tags: Already assigned tags
+
+        Returns:
+            List of basic tag suggestions with low confidence scores
+        """
+        suggestions = []
+
+        # Combine title and content for analysis
+        text = (title + " " + content).lower()
+
+        # Basic keyword patterns for common tags
+        keyword_patterns = {
+            "programming": ["code", "function", "class", "method", "algorithm", "debug"],
+            "documentation": ["readme", "guide", "tutorial", "instruction", "manual"],
+            "meeting": ["meeting", "discussion", "agenda", "notes", "action"],
+            "idea": ["idea", "concept", "brainstorm", "thought", "inspiration"],
+            "project": ["project", "task", "goal", "milestone", "deadline"],
+            "research": ["research", "study", "analysis", "investigation", "findings"],
+            "bug": ["bug", "error", "issue", "problem", "fix"],
+            "todo": ["todo", "task", "action", "reminder", "checklist"],
+        }
+
+        # Check for keyword matches
+        for tag, keywords in keyword_patterns.items():
+            if tag not in existing_tags and any(keyword in text for keyword in keywords):
+                suggestions.append(
+                    {
+                        "tag": tag,
+                        "confidence": 0.6,  # Lower confidence for basic suggestions
+                        "reason": "keyword_match",
+                    }
+                )
+
+        # Add fleeting-note tag if content is short
+        if len(content.split()) < 50 and "fleeting-note" not in existing_tags:
+            suggestions.append(
+                {
+                    "tag": "fleeting-note",
+                    "confidence": 0.7,
+                    "reason": "short_content",
+                }
+            )
+
+        # Limit to 3 basic suggestions
+        return suggestions[:3]
 
     async def _get_all_existing_tags(self) -> List[str]:
         """Get all existing tags from the database."""
@@ -1039,7 +1135,7 @@ updated: {note["updated_at"]}
         self, query: str, tags: Optional[List[str]] = None, limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Search notes using database full-text search.
+        Search notes using database full-text search with fallback support.
 
         Args:
             query: Search query string
@@ -1056,6 +1152,22 @@ updated: {note["updated_at"]}
             await self.initialize()
 
         try:
+            # Check fallback manager for knowledge search availability
+            if self.fallback_manager and not self.fallback_manager.is_service_available(
+                "knowledge_search"
+            ):
+                logger.info("Knowledge search service unavailable due to API limits, using cache")
+                # Try to get cached search results
+                cache_key = f"{hash(query + str(tags))}"
+                cached_results = await self.fallback_manager.get_cached_data(
+                    "search_results", cache_key
+                )
+                if cached_results:
+                    logger.info("Returning cached search results")
+                    return cast(List[Dict[str, Any]], cached_results[:limit])
+                else:
+                    logger.warning("No cached search results available, using basic search")
+
             # Use DatabaseService search_notes method
             results = await self.db.search_notes(query, limit=limit)
 
@@ -1066,12 +1178,28 @@ updated: {note["updated_at"]}
                     note_tags = set(note.get("tags", []))
                     if any(tag in note_tags for tag in tags):
                         filtered_results.append(note)
-                return filtered_results
+                final_results = filtered_results
+            else:
+                final_results = results
 
-            return results
+            # Cache the results for fallback
+            if self.fallback_manager:
+                cache_key = f"{hash(query + str(tags))}"
+                await self.fallback_manager.cache_data("search_results", cache_key, final_results)
+
+            return final_results
 
         except Exception as e:
             logger.error(f"Failed to search notes: {e}")
+            # Try fallback cache on error
+            if self.fallback_manager:
+                cache_key = f"{hash(query + str(tags))}"
+                cached_results = await self.fallback_manager.get_cached_data(
+                    "search_results", cache_key
+                )
+                if cached_results:
+                    logger.info("Returning cached search results due to error")
+                    return cast(List[Dict[str, Any]], cached_results[:limit])
             raise KnowledgeManagerError(f"Failed to search notes: {e}")
 
     async def health_check(self) -> Dict[str, Any]:

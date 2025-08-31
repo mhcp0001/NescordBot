@@ -6,10 +6,12 @@ and infrastructure operations for the bot.
 """
 
 from ..security import SecurityValidator
+from .api_monitor import APIMonitor, APIMonitorError
 from .batch_processor import BatchProcessor, GitHubIntegratedQueue
 from .chromadb_service import ChromaDBService, DocumentMetadata, SearchResult
 from .database import DatabaseService, IDataStore
 from .embedding import EmbeddingResult, EmbeddingService, EmbeddingServiceError
+from .fallback_manager import FallbackLevel, FallbackManager, FallbackManagerError
 from .git_operations import FileOperation, GitOperationService
 from .github import GitHubService
 from .github_auth import GitHubAuthManager
@@ -95,4 +97,9 @@ __all__ = [
     "SyncError",
     "SyncServiceUnavailableError",
     "SyncConsistencyError",
+    "FallbackManager",
+    "FallbackManagerError",
+    "FallbackLevel",
+    "APIMonitor",
+    "APIMonitorError",
 ]
