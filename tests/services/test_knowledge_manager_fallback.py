@@ -26,6 +26,18 @@ def mock_config():
 def mock_services():
     """Mock all required services."""
     database_service = Mock(spec=DatabaseService)
+    # Fix async context manager for get_connection
+    mock_connection = AsyncMock()
+    mock_cursor = AsyncMock()
+    mock_cursor.fetchall.return_value = []
+    mock_connection.execute.return_value = mock_cursor
+
+    # Create a proper async context manager mock
+    mock_context_manager = AsyncMock()
+    mock_context_manager.__aenter__.return_value = mock_connection
+    mock_context_manager.__aexit__.return_value = None
+    database_service.get_connection.return_value = mock_context_manager
+
     chromadb_service = Mock(spec=ChromaDBService)
     embedding_service = Mock(spec=EmbeddingService)
     sync_manager = Mock(spec=SyncManager)
@@ -107,7 +119,7 @@ class TestKnowledgeManagerFallback:
         assert result == cached_suggestions
         mock_fallback_manager.get_cached_data.assert_called_once()
 
-    @patch("src.nescordbot.services.knowledge_manager.genai")
+    @patch("google.generativeai")
     async def test_suggest_tags_with_ai_and_caching(
         self, mock_genai, knowledge_manager, mock_fallback_manager, mock_services
     ):
@@ -115,15 +127,17 @@ class TestKnowledgeManagerFallback:
         # Setup: Service available
         mock_fallback_manager.is_service_available.return_value = True
 
-        # Mock database call
-        mock_services["database"].get_connection = AsyncMock()
+        # Mock database call with existing tags
         mock_connection = AsyncMock()
         mock_cursor = AsyncMock()
         mock_cursor.fetchall.return_value = [("existing-tag1",), ("existing-tag2",)]
         mock_connection.execute.return_value = mock_cursor
-        mock_services[
-            "database"
-        ].get_connection.return_value.__aenter__.return_value = mock_connection
+
+        # Update the existing context manager mock
+        mock_context_manager = AsyncMock()
+        mock_context_manager.__aenter__.return_value = mock_connection
+        mock_context_manager.__aexit__.return_value = None
+        mock_services["database"].get_connection.return_value = mock_context_manager
 
         # Mock Gemini API response
         mock_model = Mock()
@@ -131,7 +145,7 @@ class TestKnowledgeManagerFallback:
         mock_response.text = (
             '{"suggestions": [{"tag": "ai-tag", "confidence": 0.95, "reason": "AI analysis"}]}'
         )
-        mock_model.generate_content_async.return_value = mock_response
+        mock_model.generate_content_async = AsyncMock(return_value=mock_response)
         mock_genai.GenerativeModel.return_value = mock_model
 
         # Mock the parsing method to return expected format
