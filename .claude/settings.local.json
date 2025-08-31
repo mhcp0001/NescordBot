@@ -29,7 +29,9 @@
       "Bash(poetry run black:*)",
       "Bash(gh project item-list:*)",
       "Bash(git branch:*)",
-      "Bash(gh pr list:*)"
+      "Bash(gh pr list:*)",
+      "mcp__serena__insert_after_symbol",
+      "mcp__serena__replace_symbol_body"
     ],
     "deny": [],
     "ask": []
