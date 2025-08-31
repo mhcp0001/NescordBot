@@ -26,7 +26,10 @@
       "mcp__serena__list_dir",
       "Bash(poetry run pytest:*)",
       "Bash(poetry run mypy:*)",
-      "Bash(poetry run black:*)"
+      "Bash(poetry run black:*)",
+      "Bash(gh project item-list:*)",
+      "Bash(git branch:*)",
+      "Bash(gh pr list:*)"
     ],
     "deny": [],
     "ask": []
