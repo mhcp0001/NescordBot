@@ -6,7 +6,10 @@ API Status Cog - API制限状況とフォールバック機能の管理UI.
 
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from ..bot import NescordBot
 
 import discord
 from discord import app_commands
@@ -36,7 +39,12 @@ class APIStatusView(discord.ui.View):
             # 埋め込みメッセージを作成
             embed = self._create_status_embed(status_data)
 
-            await interaction.followup.edit_message(interaction.message.id, embed=embed, view=self)
+            if interaction.message:
+                await interaction.followup.edit_message(
+                    interaction.message.id, embed=embed, view=self
+                )
+            else:
+                await interaction.followup.send(embed=embed, view=self, ephemeral=True)
 
         except Exception as e:
             logger.error(f"Failed to refresh API status: {e}")
@@ -82,7 +90,7 @@ class APIStatusView(discord.ui.View):
 
         embed = discord.Embed(
             title="🔍 API ステータス",
-            color=color_map.get(fallback_level, discord.Color.grey()),
+            color=color_map.get(fallback_level, discord.Color.greyple()),
             timestamp=datetime.fromisoformat(
                 status_data.get("timestamp", datetime.now().isoformat())
             ),
@@ -190,7 +198,9 @@ class APIStatusCog(commands.Cog):
     def _get_api_monitor(self):
         """APIMonitorサービスを取得."""
         try:
-            return self.bot.service_container.get_service(APIMonitor)
+            # Type cast for mypy
+            bot: "NescordBot" = self.bot  # type: ignore
+            return bot.service_container.get_service(APIMonitor)
         except ServiceNotFoundError:
             raise commands.CommandError("APIMonitor service not available")
 
@@ -199,7 +209,10 @@ class APIStatusCog(commands.Cog):
     async def api_status(self, interaction: discord.Interaction):
         """API状態を表示するコマンド."""
         # 管理者チェック
-        if not interaction.user.guild_permissions.administrator:
+        if (
+            not isinstance(interaction.user, discord.Member)
+            or not interaction.user.guild_permissions.administrator
+        ):
             await interaction.response.send_message("❌ このコマンドは管理者のみ実行可能です", ephemeral=True)
             return
 
@@ -228,7 +241,10 @@ class APIStatusCog(commands.Cog):
     ):
         """キャッシュクリアコマンド."""
         # 管理者チェック
-        if not interaction.user.guild_permissions.administrator:
+        if (
+            not isinstance(interaction.user, discord.Member)
+            or not interaction.user.guild_permissions.administrator
+        ):
             await interaction.response.send_message("❌ このコマンドは管理者のみ実行可能です", ephemeral=True)
             return
 
