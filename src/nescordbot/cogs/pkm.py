@@ -750,6 +750,323 @@ class PKMCog(commands.Cog):
             logger.error(f"Merge command failed: {e}")
             await interaction.followup.send(f"❌ ノート統合に失敗しました: {e}", ephemeral=True)
 
+    @app_commands.command(name="auto-tag", description="AIを使ってノートに自動タグ付け・カテゴリ化を行う")
+    @app_commands.describe(
+        mode="実行モード: suggest=提案のみ, apply=自動適用, batch=一括処理",
+        note_id="特定のノートID（未指定の場合は全ノート対象）",
+        max_suggestions="最大提案数（1-10、デフォルト: 5）",
+        confidence_threshold="自動適用の信頼度閾値（0.1-1.0、デフォルト: 0.8）",
+    )
+    @app_commands.choices(
+        mode=[
+            app_commands.Choice(name="提案のみ", value="suggest"),
+            app_commands.Choice(name="自動適用", value="apply"),
+            app_commands.Choice(name="一括処理", value="batch"),
+        ]
+    )
+    async def auto_tag_command(
+        self,
+        interaction: discord.Interaction,
+        mode: str = "suggest",
+        note_id: str = "",
+        max_suggestions: int = 5,
+        confidence_threshold: float = 0.8,
+    ) -> None:
+        """AIを使ったノートの自動タグ付け・カテゴリ化機能"""
+        if not self._initialized:
+            await interaction.response.send_message("❌ サービスが初期化されていません", ephemeral=True)
+            return
+
+        try:
+            await interaction.response.defer()
+
+            # パラメータ検証
+            if max_suggestions < 1 or max_suggestions > 10:
+                await interaction.followup.send(
+                    "❌ max_suggestions は 1-10 の範囲で指定してください", ephemeral=True
+                )
+                return
+
+            if confidence_threshold < 0.1 or confidence_threshold > 1.0:
+                await interaction.followup.send(
+                    "❌ confidence_threshold は 0.1-1.0 の範囲で指定してください", ephemeral=True
+                )
+                return
+
+            if mode == "suggest":
+                await self._handle_tag_suggestion(interaction, note_id, max_suggestions)
+            elif mode == "apply":
+                await self._handle_tag_application(
+                    interaction, note_id, max_suggestions, confidence_threshold
+                )
+            elif mode == "batch":
+                await self._handle_batch_tagging(interaction, max_suggestions, confidence_threshold)
+
+        except Exception as e:
+            logger.error(f"Auto-tag command error: {str(e)}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"❌ エラーが発生しました: {str(e)}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ エラーが発生しました: {str(e)}", ephemeral=True)
+
+    async def _handle_tag_suggestion(
+        self, interaction: discord.Interaction, note_id: str, max_suggestions: int
+    ) -> None:
+        """タグ提案モードの処理"""
+        if not self.knowledge_manager:
+            await interaction.followup.send("❌ KnowledgeManagerが利用できません", ephemeral=True)
+            return
+
+        if note_id:
+            # 特定ノートのタグ提案
+            note = await self.knowledge_manager.get_note(note_id)
+            if not note:
+                await interaction.followup.send(f"❌ ノート '{note_id}' が見つかりません", ephemeral=True)
+                return
+
+            suggestions = await self.knowledge_manager.suggest_tags_for_content(
+                content=note["content"],
+                title=note["title"],
+                existing_tags=note.get("tags", []),
+                max_suggestions=max_suggestions,
+            )
+
+            await self._send_tag_suggestions_response(interaction, note, suggestions)
+        else:
+            # 全ノートから適当に選んでサンプル提案
+            notes = await self.knowledge_manager.list_notes(limit=5)
+            if not notes:
+                await interaction.followup.send("📝 タグ付け可能なノートが見つかりません", ephemeral=True)
+                return
+
+            # 最初の数ノートに対してサンプル提案
+            embeds = []
+            for i, note in enumerate(notes[:3]):  # 最大3つまで
+                suggestions = await self.knowledge_manager.suggest_tags_for_content(
+                    content=note["content"],
+                    title=note["title"],
+                    existing_tags=note.get("tags", []),
+                    max_suggestions=3,
+                )
+
+                if suggestions:
+                    embed = discord.Embed(
+                        title=f"🏷️ タグ提案サンプル {i+1}",
+                        description=f"**ノート**: {note['title'][:50]}{'...' if len(note['title']) > 50 else ''}",
+                        color=0x00FF00,
+                    )
+
+                    for j, suggestion in enumerate(suggestions[:3]):
+                        embed.add_field(
+                            name=f"{j+1}. {suggestion['tag']}",
+                            value=f"信頼度: {suggestion['confidence']:.2f}\n{suggestion['reason'][:100]}{'...' if len(suggestion['reason']) > 100 else ''}",
+                            inline=False,
+                        )
+
+                    embeds.append(embed)
+
+            if embeds:
+                await interaction.followup.send(embeds=embeds[:3])  # Discord制限により最大3個まで
+            else:
+                await interaction.followup.send("📝 タグ提案可能なノートが見つかりません")
+
+    async def _handle_tag_application(
+        self,
+        interaction: discord.Interaction,
+        note_id: str,
+        max_suggestions: int,
+        confidence_threshold: float,
+    ) -> None:
+        """タグ自動適用モードの処理"""
+        if not self.knowledge_manager:
+            await interaction.followup.send("❌ KnowledgeManagerが利用できません", ephemeral=True)
+            return
+
+        if not note_id:
+            await interaction.followup.send("❌ apply モードでは note_id の指定が必要です", ephemeral=True)
+            return
+
+        note = await self.knowledge_manager.get_note(note_id)
+        if not note:
+            await interaction.followup.send(f"❌ ノート '{note_id}' が見つかりません", ephemeral=True)
+            return
+
+        # タグ提案を取得
+        suggestions = await self.knowledge_manager.suggest_tags_for_content(
+            content=note["content"],
+            title=note["title"],
+            existing_tags=note.get("tags", []),
+            max_suggestions=max_suggestions,
+        )
+
+        # 高信頼度タグを自動適用
+        applied_tags = []
+        for suggestion in suggestions:
+            if suggestion["confidence"] >= confidence_threshold:
+                applied_tags.append(suggestion["tag"])
+
+        if applied_tags:
+            # 既存タグと統合
+            current_tags = set(note.get("tags", []))
+            new_tags = list(current_tags.union(applied_tags))
+
+            # ノート更新
+            await self.knowledge_manager.update_note(note_id=note_id, tags=new_tags)
+
+            embed = discord.Embed(
+                title="✅ タグ自動適用完了", description=f"**ノート**: {note['title']}", color=0x00FF00
+            )
+            embed.add_field(
+                name="適用されたタグ", value=", ".join([f"`{tag}`" for tag in applied_tags]), inline=False
+            )
+            embed.add_field(name="信頼度閾値", value=f"{confidence_threshold:.2f}", inline=True)
+            embed.add_field(
+                name="適用数/提案数", value=f"{len(applied_tags)}/{len(suggestions)}", inline=True
+            )
+
+            await interaction.followup.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                title="⚠️ 適用可能なタグなし",
+                description=f"信頼度 {confidence_threshold:.2f} 以上のタグ提案がありませんでした",
+                color=0xFFA500,
+            )
+
+            if suggestions:
+                embed.add_field(
+                    name="提案されたタグ（参考）",
+                    value="\n".join(
+                        [f"• {s['tag']} (信頼度: {s['confidence']:.2f})" for s in suggestions[:5]]
+                    ),
+                    inline=False,
+                )
+
+            await interaction.followup.send(embed=embed)
+
+    async def _handle_batch_tagging(
+        self, interaction: discord.Interaction, max_suggestions: int, confidence_threshold: float
+    ) -> None:
+        """一括タグ付けモードの処理"""
+        if not self.knowledge_manager:
+            await interaction.followup.send("❌ KnowledgeManagerが利用できません", ephemeral=True)
+            return
+
+        # プログレス表示用のメッセージ
+        progress_embed = discord.Embed(
+            title="🔄 一括タグ付け実行中...", description="ノートを分析してタグを自動適用しています", color=0x0099FF
+        )
+        progress_message = await interaction.followup.send(embed=progress_embed)  # type: ignore[func-returns-value]
+        # Note: Discord.py typing inconsistency - followup.send may return None
+
+        # プログレスコールバック関数（同期関数として定義）
+        def progress_callback(processed: int, total: int) -> None:
+            """プログレス更新のコールバック（同期関数）"""
+            if processed % 10 == 0 or processed == total:  # 10件ごと、または完了時に更新
+                progress_embed.description = f"進捗: {processed}/{total} ノート処理完了"
+                # 非同期更新は後で実行（create_task不要、直接実行はしない）
+
+        # 一括カテゴリ化実行
+        results = await self.knowledge_manager.auto_categorize_notes(
+            batch_size=5, progress_callback=progress_callback  # 小さなバッチサイズでGemini API制限を考慮
+        )
+
+        # 結果を報告
+        result_embed = discord.Embed(
+            title="✅ 一括タグ付け完了", color=0x00FF00 if not results["errors"] else 0xFFA500
+        )
+
+        result_embed.add_field(
+            name="📊 処理結果",
+            value=f"• 処理済み: {results['processed']} ノート\n• タグ付け済み: {results['categorized']} ノート\n• エラー: {len(results['errors'])} 件",
+            inline=False,
+        )
+
+        if results["categorized"] > 0:
+            # 適用されたタグのサンプルを表示
+            sample_categories = list(results["categories"].items())[:3]
+            sample_text = []
+            for note_id, category_info in sample_categories:
+                tags = ", ".join([f"`{tag}`" for tag in category_info["added_tags"]])
+                sample_text.append(f"• {note_id[:8]}: {tags}")
+
+            if sample_text:
+                result_embed.add_field(
+                    name="🏷️ 適用例（最大3件）", value="\n".join(sample_text), inline=False
+                )
+
+        if results["errors"]:
+            result_embed.add_field(
+                name="⚠️ エラー詳細",
+                value="\n".join(results["errors"][:3])
+                + ("..." if len(results["errors"]) > 3 else ""),
+                inline=False,
+            )
+
+        result_embed.add_field(
+            name="⚙️ 設定",
+            value=f"信頼度閾値: {confidence_threshold:.2f}\n最大提案数: {max_suggestions}",
+            inline=True,
+        )
+
+        # プログレスメッセージを最終結果で更新
+        try:
+            if progress_message:
+                await progress_message.edit(embed=result_embed)
+            else:
+                await interaction.followup.send(embed=result_embed)
+        except Exception:
+            # Fallback: send as new message if edit fails
+            await interaction.followup.send(embed=result_embed)
+
+    async def _send_tag_suggestions_response(
+        self,
+        interaction: discord.Interaction,
+        note: Dict[str, Any],
+        suggestions: List[Dict[str, Any]],
+    ) -> None:
+        """タグ提案結果のレスポンス送信"""
+        if not suggestions:
+            embed = discord.Embed(
+                title="📝 タグ提案",
+                description=f"**ノート**: {note['title']}\n\n提案できるタグがありませんでした",
+                color=0x999999,
+            )
+            await interaction.followup.send(embed=embed)
+            return
+
+        embed = discord.Embed(
+            title="🏷️ AIタグ提案",
+            description=f"**ノート**: {note['title'][:100]}{'...' if len(note['title']) > 100 else ''}",
+            color=0x0099FF,
+        )
+
+        # 現在のタグを表示
+        if note.get("tags"):
+            embed.add_field(
+                name="📌 現在のタグ", value=", ".join([f"`{tag}`" for tag in note["tags"]]), inline=False
+            )
+
+        # 提案タグを表示
+        for i, suggestion in enumerate(suggestions):
+            confidence_emoji = (
+                "🟢"
+                if suggestion["confidence"] >= 0.8
+                else "🟡"
+                if suggestion["confidence"] >= 0.6
+                else "🔴"
+            )
+            embed.add_field(
+                name=f"{confidence_emoji} {i+1}. {suggestion['tag']}",
+                value=f"信頼度: {suggestion['confidence']:.2f}\n{suggestion['reason'][:150]}{'...' if len(suggestion['reason']) > 150 else ''}",
+                inline=False,
+            )
+
+        embed.add_field(
+            name="💡 使用方法", value="手動でタグを適用するか、`/auto-tag apply` で高信頼度タグを自動適用できます", inline=False
+        )
+
+        await interaction.followup.send(embed=embed)
+
 
 class NoteMergeView(discord.ui.View):
     """Interactive view for note merging with AI suggestions."""
