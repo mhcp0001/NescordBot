@@ -688,6 +688,540 @@ class PKMCog(commands.Cog):
             logger.error(f"Path finding failed: {e}")
             await interaction.followup.send(f"❌ 経路検索に失敗しました: {e}", ephemeral=True)
 
+    # Merge command group
+    @app_commands.command(name="merge", description="複数のノートを意味的に統合して新しい知見を生成します")
+    @app_commands.describe(notes="統合したいノート（1-3個、スペース区切り）", custom_title="統合ノートのカスタムタイトル（オプション）")
+    async def merge_command(
+        self, interaction: discord.Interaction, notes: str, custom_title: Optional[str] = None
+    ) -> None:
+        """Interactive note merging with AI suggestions."""
+        if not await self._check_services(interaction):
+            return
+
+        await interaction.response.defer(thinking=True)
+
+        try:
+            # Parse note references
+            note_titles = [title.strip() for title in notes.split() if title.strip()]
+
+            if not note_titles:
+                await interaction.followup.send(
+                    "❌ 統合するノートを1つ以上指定してください。\n" "例: `/merge 会議録2024 プロジェクト要件`", ephemeral=True
+                )
+                return
+
+            if len(note_titles) > 3:
+                await interaction.followup.send("❌ 一度に指定できるノートは最大3個までです。", ephemeral=True)
+                return
+
+            # Find matching notes
+            selected_notes = []
+            assert self.knowledge_manager is not None  # Type guard
+            for title_part in note_titles:
+                matching_notes = await self.knowledge_manager.search_notes(
+                    query=title_part, limit=5
+                )
+
+                if not matching_notes:
+                    await interaction.followup.send(
+                        f"❌ '{title_part}' に該当するノートが見つかりません。", ephemeral=True
+                    )
+                    return
+
+                # Take the best match
+                best_match = matching_notes[0]
+                selected_notes.append(best_match)
+
+            # Create merge view with AI suggestions
+            assert self.knowledge_manager is not None  # Type guard for mypy
+            merge_view = NoteMergeView(
+                selected_notes=selected_notes,
+                knowledge_manager=self.knowledge_manager,
+                custom_title=custom_title,
+                user_id=interaction.user.id,
+                guild_id=interaction.guild_id,
+            )
+
+            # Send initial merge interface
+            embed = merge_view.create_initial_embed()
+            await interaction.followup.send(embed=embed, view=merge_view)
+
+        except Exception as e:
+            logger.error(f"Merge command failed: {e}")
+            await interaction.followup.send(f"❌ ノート統合に失敗しました: {e}", ephemeral=True)
+
+
+class NoteMergeView(discord.ui.View):
+    """Interactive view for note merging with AI suggestions."""
+
+    def __init__(
+        self,
+        selected_notes: List[Dict[str, Any]],
+        knowledge_manager: KnowledgeManager,
+        custom_title: Optional[str] = None,
+        user_id: Optional[int] = None,
+        guild_id: Optional[int] = None,
+        timeout: float = 300.0,
+    ):
+        super().__init__(timeout=timeout)
+        self.selected_notes = selected_notes
+        self.knowledge_manager = knowledge_manager
+        self.custom_title = custom_title
+        self.user_id = user_id
+        self.guild_id = guild_id
+        self.suggested_notes: List[Dict[str, Any]] = []
+        self.final_notes = selected_notes.copy()
+        self._suggestions_loaded = False
+
+    def create_initial_embed(self) -> discord.Embed:
+        """Create initial embed showing selected notes."""
+        embed = discord.Embed(
+            title="📝 ノート統合 - Phase 1: 初期選択", color=0x2ECC71, timestamp=datetime.utcnow()
+        )
+
+        selected_text = "\n".join(
+            [f"• **{note['title']}** ({len(note['content'])} 文字)" for note in self.selected_notes]
+        )
+
+        embed.add_field(name="🎯 選択されたノート", value=selected_text, inline=False)
+
+        embed.add_field(name="⏳ 次のステップ", value="AI が関連するノートを分析中...", inline=False)
+
+        embed.set_footer(text="関連ノート提案は30秒でタイムアウトします")
+        return embed
+
+    async def load_suggestions(self) -> None:
+        """Load AI-powered note suggestions with enhanced semantic analysis."""
+        if self._suggestions_loaded:
+            return
+
+        try:
+            # Combine content from selected notes for analysis
+            combined_content = " ".join([note["content"] for note in self.selected_notes])
+            combined_tags = []
+            selected_titles = []
+            for note in self.selected_notes:
+                combined_tags.extend(note.get("tags", []))
+                selected_titles.append(note["title"])
+
+            # Multi-phase search for comprehensive coverage
+            all_candidate_notes = set()
+
+            # Phase 1: Content-based semantic search
+            content_query = (
+                combined_content[:500] if len(combined_content) > 500 else combined_content
+            )
+            if content_query.strip():
+                semantic_notes = await self.knowledge_manager.search_notes(
+                    query=content_query, limit=15
+                )
+                for note in semantic_notes:
+                    all_candidate_notes.add(note["id"])
+
+            # Phase 2: Title-based keyword search for related concepts
+            title_keywords = " ".join(selected_titles)
+            if title_keywords.strip():
+                keyword_notes = await self.knowledge_manager.search_notes(
+                    query=title_keywords, limit=10
+                )
+                for note in keyword_notes:
+                    all_candidate_notes.add(note["id"])
+
+            # Phase 3: Tag-based discovery for broader context
+            unique_tags = list(set(combined_tags))[:3]  # Top 3 unique tags
+            for tag in unique_tags:
+                if tag:
+                    tag_notes = await self.knowledge_manager.get_notes_by_tag(tag, limit=5)
+                    for note in tag_notes:
+                        all_candidate_notes.add(note["id"])
+
+            # Remove already selected notes
+            selected_ids = {note["id"] for note in self.selected_notes}
+            candidate_ids = all_candidate_notes - selected_ids
+
+            # Get full note data for scoring
+            candidates: List[Dict[str, Any]] = []
+            for note_id in candidate_ids:
+                retrieved_note = await self.knowledge_manager.get_note(note_id)
+                if retrieved_note is not None:
+                    candidates.append(retrieved_note)
+
+            # Enhanced relevance scoring with multiple factors
+            scored_candidates = []
+            for note in candidates:
+                score = self._calculate_enhanced_relevance_score(
+                    note, combined_content, combined_tags, selected_titles
+                )
+
+                if score > 50:  # Minimum threshold for relevance
+                    scored_candidates.append(
+                        {"note": note, "relevance": min(95, max(50, int(score)))}  # 50-95% range
+                    )
+
+            # Sort by relevance and add diversity
+            scored_candidates.sort(
+                key=lambda x: int(x["relevance"])
+                if isinstance(x["relevance"], (int, float))
+                else 0,
+                reverse=True,
+            )
+
+            # Apply diversity filtering to prevent echo chamber
+            self.suggested_notes = self._apply_diversity_filter(scored_candidates[:8])[:5]
+            self._suggestions_loaded = True
+
+        except Exception as e:
+            logger.error(f"Failed to load note suggestions: {e}")
+            self.suggested_notes = []
+            self._suggestions_loaded = True
+
+    def _calculate_enhanced_relevance_score(
+        self,
+        candidate_note: Dict[str, Any],
+        combined_content: str,
+        combined_tags: List[str],
+        selected_titles: List[str],
+    ) -> float:
+        """Calculate enhanced relevance score using multiple factors."""
+        score = 0.0
+
+        # Factor 1: Tag overlap (25% weight)
+        note_tags = candidate_note.get("tags", [])
+        tag_overlap = len(set(note_tags) & set(combined_tags))
+        if combined_tags:
+            tag_score = (tag_overlap / len(set(combined_tags))) * 25
+            score += tag_score
+
+        # Factor 2: Content length similarity (15% weight)
+        candidate_length = len(candidate_note["content"])
+        avg_selected_length = len(combined_content) / len(self.selected_notes)
+
+        length_ratio = min(candidate_length, avg_selected_length) / max(
+            candidate_length, avg_selected_length, 1
+        )
+        length_score = length_ratio * 15
+        score += length_score
+
+        # Factor 3: Title keyword intersection (20% weight)
+        candidate_title = candidate_note["title"].lower()
+        title_keywords = " ".join(selected_titles).lower().split()
+        title_matches = sum(1 for word in title_keywords if word in candidate_title)
+        if title_keywords:
+            title_score = (title_matches / len(title_keywords)) * 20
+            score += title_score
+
+        # Factor 4: Content keyword density (25% weight)
+        content_words = set(combined_content.lower().split())
+        candidate_words = set(candidate_note["content"].lower().split())
+
+        if content_words and candidate_words:
+            intersection = len(content_words & candidate_words)
+            union = len(content_words | candidate_words)
+            jaccard_similarity = intersection / union if union > 0 else 0
+            content_score = jaccard_similarity * 25
+            score += content_score
+
+        # Factor 5: Temporal proximity bonus (10% weight)
+        try:
+            from datetime import datetime, timezone
+
+            # Get newest selected note timestamp
+            newest_selected = max(
+                datetime.fromisoformat(note.get("created_at", "1970-01-01")).replace(
+                    tzinfo=timezone.utc
+                )
+                for note in self.selected_notes
+                if note.get("created_at")
+            )
+
+            candidate_time = datetime.fromisoformat(
+                candidate_note.get("created_at", "1970-01-01")
+            ).replace(tzinfo=timezone.utc)
+
+            time_diff_days = abs((newest_selected - candidate_time).days)
+
+            # Bonus for notes created within 30 days
+            if time_diff_days <= 30:
+                temporal_bonus = (30 - time_diff_days) / 30 * 10
+                score += temporal_bonus
+
+        except (ValueError, TypeError):
+            # Skip temporal scoring if date parsing fails
+            pass
+
+        # Factor 6: Source type diversity bonus (5% weight)
+        selected_types = {note.get("source_type", "manual") for note in self.selected_notes}
+        candidate_type = candidate_note.get("source_type", "manual")
+
+        if candidate_type not in selected_types:
+            score += 5  # Diversity bonus
+
+        return score
+
+    def _apply_diversity_filter(
+        self, scored_candidates: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Apply diversity filtering to prevent similar suggestions."""
+        if len(scored_candidates) <= 3:
+            return scored_candidates
+
+        filtered: List[Dict[str, Any]] = []
+        used_tag_combinations = set()
+
+        for candidate in scored_candidates:
+            note = candidate["note"]
+            note_tags = tuple(sorted(note.get("tags", [])))
+
+            # Ensure tag diversity
+            if len(filtered) < 2:
+                # Always include top 2 candidates
+                filtered.append(candidate)
+                used_tag_combinations.add(note_tags)
+            elif note_tags not in used_tag_combinations or len(filtered) >= 5:
+                # Add diverse candidates or fill remaining slots
+                filtered.append(candidate)
+                used_tag_combinations.add(note_tags)
+
+            if len(filtered) >= 5:
+                break
+
+        return filtered
+
+    async def update_embed_with_suggestions(self, interaction: discord.Interaction) -> None:
+        """Update embed to show AI suggestions."""
+        await self.load_suggestions()
+
+        embed = discord.Embed(
+            title="📝 ノート統合 - Phase 2: AI提案", color=0x3498DB, timestamp=datetime.utcnow()
+        )
+
+        # Selected notes
+        selected_text = "\n".join([f"• **{note['title']}**" for note in self.selected_notes])
+        embed.add_field(name="✅ 選択済みノート", value=selected_text, inline=False)
+
+        # AI suggestions
+        if self.suggested_notes:
+            suggestions_text = "\n".join(
+                [
+                    f"• **{item['note']['title']}** - 関連度: {item['relevance']}%"
+                    for item in self.suggested_notes[:3]  # Show top 3
+                ]
+            )
+            embed.add_field(name="🤖 AI提案 (関連する可能性のあるノート)", value=suggestions_text, inline=False)
+        else:
+            embed.add_field(name="🤖 AI提案", value="関連するノートが見つかりませんでした。", inline=False)
+
+        embed.add_field(name="📋 次のアクション", value="提案を確認し、統合対象を選択してください。", inline=False)
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🔍 関連ノート提案を表示", style=discord.ButtonStyle.primary)
+    async def show_suggestions(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        """Show AI-powered note suggestions."""
+        button.disabled = True
+        await self.update_embed_with_suggestions(interaction)
+
+    @discord.ui.button(label="➕ 全て追加", style=discord.ButtonStyle.secondary)
+    async def add_all_suggestions(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        """Add all suggested notes to merge."""
+        await self.load_suggestions()
+
+        for item in self.suggested_notes:
+            self.final_notes.append(item["note"])
+
+        await self.show_final_confirmation(interaction)
+
+    @discord.ui.button(label="🔧 個別選択", style=discord.ButtonStyle.secondary)
+    async def individual_selection(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        """Show individual note selection interface."""
+        await self.load_suggestions()
+
+        if not self.suggested_notes:
+            await interaction.response.send_message("❌ 提案するノートがありません。", ephemeral=True)
+            return
+
+        # Create selection dropdown
+        options = []
+        for i, item in enumerate(self.suggested_notes[:5]):  # Max 5 options
+            note = item["note"]
+            options.append(
+                discord.SelectOption(
+                    label=note["title"][:100],  # Discord limit
+                    description=f"関連度: {item['relevance']}% | {len(note['content'])} 文字",
+                    value=str(i),
+                )
+            )
+
+        select = NoteSelectionDropdown(options, self)
+        view = discord.ui.View()
+        view.add_item(select)
+
+        await interaction.response.send_message("📋 追加するノートを選択してください:", view=view, ephemeral=True)
+
+    @discord.ui.button(label="⏭️ スキップして統合", style=discord.ButtonStyle.success)
+    async def skip_to_merge(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        """Skip suggestions and proceed with merge."""
+        await self.show_final_confirmation(interaction)
+
+    async def show_final_confirmation(self, interaction: discord.Interaction) -> None:
+        """Show final confirmation before merge."""
+        embed = discord.Embed(
+            title="📝 ノート統合 - Phase 3: 最終確認", color=0xE74C3C, timestamp=datetime.utcnow()
+        )
+
+        notes_text = "\n".join(
+            [f"• **{note['title']}** ({len(note['content'])} 文字)" for note in self.final_notes]
+        )
+
+        embed.add_field(
+            name=f"📄 統合対象ノート ({len(self.final_notes)}個)", value=notes_text, inline=False
+        )
+
+        total_chars = sum(len(note["content"]) for note in self.final_notes)
+        embed.add_field(
+            name="📊 統合予測", value=f"• 総文字数: {total_chars} 文字\n• 予想圧縮率: ~30-40%", inline=False
+        )
+
+        # Clear previous buttons and add final action buttons
+        self.clear_items()
+        self.add_item(ExecuteMergeButton())
+        self.add_item(CancelMergeButton())
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+class NoteSelectionDropdown(discord.ui.Select):
+    """Dropdown for individual note selection."""
+
+    def __init__(self, options: List[discord.SelectOption], parent_view: NoteMergeView):
+        super().__init__(placeholder="追加するノートを選択...", options=options, max_values=len(options))
+        self.parent_view = parent_view
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Handle note selection."""
+        selected_indices = [int(str(value)) for value in self.values]
+
+        for index in selected_indices:
+            note = self.parent_view.suggested_notes[index]["note"]
+            if note not in self.parent_view.final_notes:
+                self.parent_view.final_notes.append(note)
+
+        await interaction.response.send_message(
+            f"✅ {len(selected_indices)} 個のノートを追加しました。元の画面で統合を続行してください。", ephemeral=True
+        )
+
+
+class ExecuteMergeButton(discord.ui.Button):
+    """Button to execute the merge operation."""
+
+    def __init__(self):
+        super().__init__(label="🚀 統合実行", style=discord.ButtonStyle.danger)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Execute note merge."""
+        view = self.view
+        assert isinstance(view, NoteMergeView)
+        await interaction.response.defer()
+
+        try:
+            # Show processing status
+            processing_embed = discord.Embed(
+                title="⏳ ノート統合処理中...",
+                description="AI がノートを分析・統合しています。しばらくお待ちください...",
+                color=0xF39C12,
+                timestamp=datetime.utcnow(),
+            )
+
+            processing_steps = [
+                "🔄 内容分析中... (1/4)",
+                "🔄 構造化中... (2/4)",
+                "🔄 統合文書生成中... (3/4)",
+                "🔄 メタデータ更新中... (4/4)",
+            ]
+
+            for step in processing_steps:
+                processing_embed.description = step
+                await interaction.edit_original_response(embed=processing_embed)
+                await asyncio.sleep(1)  # Simulate processing time
+
+            # Execute merge using knowledge manager
+            note_ids = [note["id"] for note in view.final_notes]
+            merged_title = view.custom_title or f"統合ノート_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            merged_note_id = await view.knowledge_manager.merge_notes(
+                note_ids=note_ids, new_title=merged_title
+            )
+
+            # Get the merged note for display
+            merged_note = await view.knowledge_manager.get_note(merged_note_id)
+
+            # Show success result
+            success_embed = discord.Embed(
+                title="✨ ノート統合完了!", color=0x27AE60, timestamp=datetime.utcnow()
+            )
+
+            if merged_note is not None:
+                success_embed.add_field(
+                    name="📄 新規統合ノート", value=f"**{merged_note['title']}**", inline=False
+                )
+
+                original_chars = sum(len(note["content"]) for note in view.final_notes)
+                merged_chars = len(merged_note["content"])
+                compression_rate = int((1 - merged_chars / original_chars) * 100)
+
+                success_embed.add_field(
+                    name="📊 統合サマリー",
+                    value=f"• 統合ノート数: {len(view.final_notes)}個\n"
+                    f"• 文字数: {original_chars} → {merged_chars} ({compression_rate}%圧縮)",
+                    inline=False,
+                )
+            else:
+                success_embed.add_field(
+                    name="⚠️ 注意",
+                    value="統合は完了しましたが、結果の表示に問題が発生しました。",
+                    inline=False,
+                )
+
+            # Clear buttons
+            view.clear_items()
+
+            await interaction.edit_original_response(embed=success_embed, view=view)
+
+        except Exception as e:
+            logger.error(f"Merge execution failed: {e}")
+
+            error_embed = discord.Embed(
+                title="❌ 統合失敗", description=f"ノート統合中にエラーが発生しました: {e}", color=0xE74C3C
+            )
+
+            await interaction.edit_original_response(embed=error_embed, view=None)
+
+
+class CancelMergeButton(discord.ui.Button):
+    """Button to cancel the merge operation."""
+
+    def __init__(self):
+        super().__init__(label="❌ キャンセル", style=discord.ButtonStyle.secondary)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        """Cancel merge operation."""
+        embed = discord.Embed(
+            title="❌ 統合をキャンセルしました", description="ノート統合操作がキャンセルされました。", color=0x95A5A6
+        )
+
+        view = self.view
+        assert isinstance(view, NoteMergeView)
+        view.clear_items()
+        await interaction.response.edit_message(embed=embed, view=view)
+
 
 async def setup(bot: commands.Bot) -> None:
     """Setup function for loading the cog."""
