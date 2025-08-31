@@ -1,0 +1,74 @@
+name: 'Setup Python and Poetry'
+description: 'Sets up Python, Poetry, and installs project dependencies with caching'
+
+inputs:
+  python-version:
+    description: 'Python version to use'
+    required: false
+    default: '3.11'
+  cache-key-suffix:
+    description: 'Additional suffix for cache key'
+    required: false
+    default: ''
+  install-project:
+    description: 'Whether to install the project itself'
+    required: false
+    default: 'true'
+
+outputs:
+  cache-hit:
+    description: 'Whether the cache was hit'
+    value: ${{ steps.cached-poetry-dependencies.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python ${{ inputs.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install Poetry with retry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+      env:
+        POETRY_HTTP_TIMEOUT: 300
+
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ inputs.python-version }}-${{ hashFiles('**/poetry.lock') }}${{ inputs.cache-key-suffix }}
+        restore-keys: |
+          venv-${{ runner.os }}-${{ inputs.python-version }}-
+
+    - name: Install dependencies with retry
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: |
+        for i in {1..3}; do
+          if poetry install --no-interaction --no-root; then
+            echo "Poetry install succeeded on attempt $i"
+            break
+          else
+            echo "Poetry install failed on attempt $i"
+            if [ $i -eq 3 ]; then
+              echo "Poetry install failed after 3 attempts"
+              exit 1
+            fi
+            sleep 30
+          fi
+        done
+      shell: bash
+      env:
+        POETRY_HTTP_TIMEOUT: 300
+        POETRY_REQUESTS_TIMEOUT: 300
+
+    - name: Install project
+      if: inputs.install-project == 'true'
+      run: poetry install --no-interaction
+      shell: bash

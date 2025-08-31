@@ -10,7 +10,7 @@ import logging
 import re
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..config import BotConfig
 from .chromadb_service import ChromaDBService
@@ -407,6 +407,261 @@ class KnowledgeManager:
         """
         matches = self.tag_pattern.findall(content)
         return [match.lower() for match in matches if match]
+
+    async def suggest_tags_for_content(
+        self,
+        content: str,
+        title: str = "",
+        existing_tags: Optional[List[str]] = None,
+        max_suggestions: int = 5,
+    ) -> List[Dict[str, Any]]:
+        """
+        Suggest tags for content using AI analysis.
+
+        Args:
+            content: Text content to analyze
+            title: Optional title for additional context
+            existing_tags: Existing manual tags to consider
+            max_suggestions: Maximum number of tag suggestions
+
+        Returns:
+            List of tag suggestions with confidence scores
+        """
+        if not content.strip():
+            return []
+
+        try:
+            # Prepare content for analysis
+            analysis_text = f"Title: {title}\n\nContent: {content}" if title else content
+
+            # Get existing tags from database for context
+            all_existing_tags = await self._get_all_existing_tags()
+
+            # Call Gemini for content analysis
+            import google.generativeai as genai
+
+            genai.configure(api_key=self.config.gemini_api_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+
+            # Create prompt for tag suggestion
+            prompt = self._create_tag_suggestion_prompt(
+                analysis_text, all_existing_tags, existing_tags or [], max_suggestions
+            )
+
+            # Generate suggestions
+            response = await model.generate_content_async(prompt)
+
+            # Parse response
+            suggestions = self._parse_tag_suggestions(response.text)
+
+            # Filter and score suggestions
+            filtered_suggestions = self._filter_and_score_suggestions(
+                suggestions, existing_tags or [], all_existing_tags
+            )
+
+            return filtered_suggestions[:max_suggestions]
+
+        except Exception as e:
+            logger.error(f"Error in tag suggestion: {str(e)}")
+            return []
+
+    async def auto_categorize_notes(
+        self,
+        note_ids: Optional[List[str]] = None,
+        batch_size: int = 10,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Auto-categorize notes using semantic analysis.
+
+        Args:
+            note_ids: Specific note IDs to categorize (None for all)
+            batch_size: Number of notes to process at once
+            progress_callback: Optional progress callback
+
+        Returns:
+            Dictionary with categorization results
+        """
+        try:
+            # Get notes to categorize
+            if note_ids:
+                notes = []
+                for note_id in note_ids:
+                    note = await self.get_note(note_id)
+                    if note:
+                        notes.append(note)
+            else:
+                notes = await self.list_notes(limit=1000)  # Use large limit instead of None
+
+            if not notes:
+                return {"processed": 0, "categorized": 0, "errors": []}
+
+            categorization_results: Dict[str, Any] = {
+                "processed": 0,
+                "categorized": 0,
+                "errors": [],
+                "categories": {},
+            }
+
+            # Process notes in batches
+            for i in range(0, len(notes), batch_size):
+                batch = notes[i : i + batch_size]
+
+                for note in batch:
+                    try:
+                        # Suggest categories for this note
+                        suggestions = await self.suggest_tags_for_content(
+                            content=note["content"],
+                            title=note["title"],
+                            existing_tags=note.get("tags", []),
+                            max_suggestions=3,
+                        )
+
+                        if suggestions:
+                            # Apply high-confidence suggestions automatically
+                            high_confidence_tags = [
+                                s["tag"] for s in suggestions if s["confidence"] >= 0.8
+                            ]
+
+                            if high_confidence_tags:
+                                # Update note with new tags
+                                current_tags = set(note.get("tags", []))
+                                new_tags = list(current_tags.union(high_confidence_tags))
+
+                                await self.update_note(note_id=note["id"], tags=new_tags)
+
+                                categorization_results["categorized"] += 1
+                                categorization_results["categories"][note["id"]] = {
+                                    "added_tags": high_confidence_tags,
+                                    "suggestions": suggestions,
+                                }
+
+                        categorization_results["processed"] += 1
+
+                        # Progress callback
+                        if progress_callback:
+                            progress_callback(categorization_results["processed"], len(notes))
+
+                    except Exception as e:
+                        error_msg = f"Error processing note {note['id']}: {str(e)}"
+                        logger.error(error_msg)
+                        categorization_results["errors"].append(error_msg)
+
+            return categorization_results
+
+        except Exception as e:
+            logger.error(f"Error in batch categorization: {str(e)}")
+            return {"processed": 0, "categorized": 0, "errors": [str(e)]}
+
+    def _create_tag_suggestion_prompt(
+        self,
+        content: str,
+        existing_tags: List[str],
+        current_tags: List[str],
+        max_suggestions: int,
+    ) -> str:
+        """Create optimized prompt for tag suggestion."""
+        prompt = f"""あなたは知識管理システムの専門家です。以下のコンテンツに最適なタグを提案してください。
+
+コンテンツ:
+{content[:2000]}{"..." if len(content) > 2000 else ""}
+
+現在のタグ: {", ".join(current_tags) if current_tags else "なし"}
+
+システム内の既存タグ例: {", ".join(existing_tags[:20])}
+
+要求:
+1. コンテンツの主要テーマを表すタグを{max_suggestions}個以下で提案
+2. 既存タグがある場合は再利用を優先
+3. 日本語または英語の単語・短いフレーズ
+4. 各タグの理由も説明
+
+出力形式:
+TAG1: [信頼度0.0-1.0] - 理由
+TAG2: [信頼度0.0-1.0] - 理由
+
+例:
+プロジェクト管理: [0.9] - コンテンツの主要テーマ
+技術仕様: [0.7] - 詳細な技術情報を含む"""
+
+        return prompt
+
+    def _parse_tag_suggestions(self, response_text: str) -> List[Dict[str, Any]]:
+        """Parse Gemini response into structured tag suggestions."""
+        suggestions = []
+
+        try:
+            lines = response_text.strip().split("\n")
+
+            for line in lines:
+                line = line.strip()
+                if ":" in line and "[" in line and "]" in line:
+                    # Extract tag and confidence
+                    parts = line.split(":", 1)
+                    if len(parts) == 2:
+                        tag = parts[0].strip()
+                        rest = parts[1].strip()
+
+                        # Extract confidence score
+                        if "[" in rest and "]" in rest:
+                            start = rest.find("[") + 1
+                            end = rest.find("]")
+                            confidence_str = rest[start:end]
+                            reason = rest[end + 1 :].strip(" -")
+
+                            try:
+                                confidence = float(confidence_str)
+                                suggestions.append(
+                                    {"tag": tag, "confidence": confidence, "reason": reason}
+                                )
+                            except ValueError:
+                                continue
+
+        except Exception as e:
+            logger.error(f"Error parsing tag suggestions: {str(e)}")
+
+        return suggestions
+
+    def _filter_and_score_suggestions(
+        self,
+        suggestions: List[Dict[str, Any]],
+        existing_tags: List[str],
+        all_system_tags: List[str],
+    ) -> List[Dict[str, Any]]:
+        """Filter and adjust scoring for tag suggestions."""
+        filtered = []
+
+        for suggestion in suggestions:
+            tag = suggestion["tag"].lower()
+
+            # Skip if already exists as current tag
+            if tag in [t.lower() for t in existing_tags]:
+                continue
+
+            # Boost confidence if tag exists in system
+            if tag in [t.lower() for t in all_system_tags]:
+                suggestion["confidence"] = min(1.0, suggestion["confidence"] + 0.1)
+                suggestion["existing"] = True
+            else:
+                suggestion["existing"] = False
+
+            # Only include suggestions with reasonable confidence
+            if suggestion["confidence"] >= 0.4:
+                filtered.append(suggestion)
+
+        # Sort by confidence
+        return sorted(filtered, key=lambda x: x["confidence"], reverse=True)
+
+    async def _get_all_existing_tags(self) -> List[str]:
+        """Get all existing tags from the database."""
+        try:
+            async with self.db.get_connection() as conn:
+                cursor = await conn.execute("SELECT DISTINCT tag FROM note_tags ORDER BY tag")
+                rows = await cursor.fetchall()
+                return [row[0] for row in rows]
+        except Exception as e:
+            logger.error(f"Error fetching existing tags: {str(e)}")
+            return []
 
     async def update_links(self, note_id: str, content: str) -> None:
         """
