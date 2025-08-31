@@ -35,7 +35,9 @@
       "Bash(gh project list:*)",
       "mcp__serena__find_file",
       "mcp__serena__search_for_pattern",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(gh pr create:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
