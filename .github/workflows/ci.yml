@@ -1,5 +1,9 @@
 name: CI
 
+permissions:
+  contents: read
+  pull-requests: write  # For coverage reports and comments
+
 on:
   push:
     branches:
@@ -9,14 +13,54 @@ on:
       - 'fix/**'         # All fix branches
       - 'hotfix/**'      # All hotfix branches
       - 'release/**'     # All release branches
+    paths-ignore:
+      - '**.md'          # Documentation files
+      - 'docs/**'        # Documentation directory
+      - '.github/ISSUE_TEMPLATE/**'  # Issue templates
+      - '.github/PULL_REQUEST_TEMPLATE.md'  # PR template
+      - 'LICENSE'        # License file
+      - '.gitignore'     # Git ignore file
   pull_request:
     branches:
       - main
       - develop
       - 'feature/phase*' # Phase integration branches
       - 'release/**'     # Release branches
+    paths-ignore:
+      - '**.md'          # Documentation files
+      - 'docs/**'        # Documentation directory
+      - '.github/ISSUE_TEMPLATE/**'  # Issue templates
+      - '.github/PULL_REQUEST_TEMPLATE.md'  # PR template
+      - 'LICENSE'        # License file
+      - '.gitignore'     # Git ignore file
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python and Poetry
+      uses: ./.github/actions/setup-python-poetry
+      with:
+        python-version: "3.11"
+        cache-key-suffix: "-lint"
+
+    - name: Run code formatting check (Black)
+      run: poetry run black --check src/ tests/
+
+    - name: Run import sorting check (isort)
+      run: poetry run isort --check-only src/ tests/
+
+    - name: Run linting (flake8)
+      run: poetry run flake8 src/ tests/
+
+    - name: Run type checking (mypy)
+      run: poetry run mypy src/ --ignore-missing-imports
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -85,18 +129,6 @@ jobs:
         echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
         echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
         echo "LOG_LEVEL=DEBUG" >> .env.test
-
-    - name: Run code formatting check (Black)
-      run: poetry run black --check src/ tests/
-
-    - name: Run import sorting check (isort)
-      run: poetry run isort --check-only src/ tests/
-
-    - name: Run linting (flake8)
-      run: poetry run flake8 src/ tests/
-
-    - name: Run type checking (mypy)
-      run: poetry run mypy src/ --ignore-missing-imports
 
     - name: Run tests with pytest
       env:
