@@ -3,7 +3,7 @@ import logging
 import os
 import time
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import discord
 from discord import app_commands
@@ -11,6 +11,9 @@ from discord.ext import commands
 from openai import OpenAI
 
 from ..services import NoteProcessingService, ObsidianGitHubService
+
+if TYPE_CHECKING:
+    from ..services.knowledge_manager import KnowledgeManager
 
 
 class Voice(commands.Cog):
@@ -21,10 +24,12 @@ class Voice(commands.Cog):
         bot,
         obsidian_service: Optional[ObsidianGitHubService] = None,
         note_processing_service: Optional[NoteProcessingService] = None,
+        knowledge_manager: Optional["KnowledgeManager"] = None,
     ):
         self.bot = bot
         self.obsidian_service = obsidian_service
         self.note_processing_service = note_processing_service
+        self.knowledge_manager = knowledge_manager
 
         # TranscriptionServiceを初期化
         from ..services.transcription import get_transcription_service
@@ -188,6 +193,8 @@ class Voice(commands.Cog):
                     transcription=processed_text,
                     summary=ai_result["summary"],
                     obsidian_service=self.obsidian_service,
+                    knowledge_manager=self.knowledge_manager,
+                    message=message,
                 )
                 await message.reply(view=view)
 
@@ -226,11 +233,15 @@ class TranscriptionView(discord.ui.View):
         transcription: str,
         summary: str,
         obsidian_service: Optional[ObsidianGitHubService] = None,
+        knowledge_manager: Optional["KnowledgeManager"] = None,
+        message: Optional[discord.Message] = None,
     ):
         super().__init__(timeout=300)  # 5分でタイムアウト
         self.transcription = transcription
         self.summary = summary
         self.obsidian_service = obsidian_service
+        self.knowledge_manager = knowledge_manager
+        self.message = message
 
     @discord.ui.button(label="📝 Obsidianに保存", style=discord.ButtonStyle.primary)
     async def save_to_obsidian(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -296,9 +307,211 @@ class TranscriptionView(discord.ui.View):
         """AIによる再生成"""
         await interaction.response.send_message("再生成機能は現在開発中です。", ephemeral=True)
 
+    @discord.ui.button(label="🧠 PKMに保存", style=discord.ButtonStyle.success)
+    async def save_to_pkm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Save voice transcription to PKM system with auto-tagging."""
+        logger = logging.getLogger(__name__)
+
+        try:
+            if not self.knowledge_manager:
+                await interaction.response.send_message(
+                    "❌ PKMサービスが利用できません。\n" "管理者に設定確認を依頼してください。",
+                    ephemeral=True,
+                )
+                return
+
+            # Defer response for processing
+            await interaction.response.defer(ephemeral=True)
+
+            # Generate note title from summary
+            title = self.summary[:50].strip() if self.summary else "Discord voice note"
+            if len(title) < len(self.summary):
+                title += "..."
+
+            try:
+                # Auto-suggest tags using KnowledgeManager
+                tag_suggestions = await self.knowledge_manager.suggest_tags_for_content(
+                    content=self.transcription, title=title, max_suggestions=5
+                )
+
+                # Extract high-confidence tags (>0.8)
+                auto_tags = [
+                    suggestion["tag"]
+                    for suggestion in tag_suggestions
+                    if suggestion["confidence"] > 0.8
+                ]
+
+                # Ensure we have at least basic tags
+                if not auto_tags:
+                    auto_tags = ["fleeting-note", "voice"]
+                elif "fleeting-note" not in auto_tags:
+                    auto_tags.append("fleeting-note")
+                if "voice" not in auto_tags:
+                    auto_tags.append("voice")
+
+                logger.info(f"Auto-generated tags for voice PKM: {auto_tags}")
+
+                # Create note in PKM system
+                note_id = await self.knowledge_manager.create_note(
+                    title=title,
+                    content=self.transcription,
+                    tags=auto_tags,
+                    source_type="voice",
+                    source_id=str(self.message.id) if self.message else None,
+                    user_id=str(interaction.user.id),
+                    channel_id=str(interaction.channel.id) if interaction.channel else None,
+                    guild_id=str(interaction.guild.id) if interaction.guild else None,
+                )
+
+                # Search for related notes
+                related_notes = []
+                try:
+                    search_results = await self.knowledge_manager.search_notes(query=title, limit=4)
+                    # Filter out the just-created note
+                    related_notes = [note for note in search_results if note.get("id") != note_id][
+                        :3
+                    ]  # Limit to 3 related notes
+                except Exception as e:
+                    logger.warning(f"Related notes search failed: {e}")
+
+                # Build response message
+                response_parts = [
+                    "🧠 **音声PKMノートを作成しました！**",
+                    f"📝 **タイトル**: {title}",
+                    f"🏷️ **タグ**: {', '.join(auto_tags)}",
+                    f"🆔 **ノートID**: `{note_id}`",
+                ]
+
+                if related_notes:
+                    response_parts.append("\n🔗 **関連ノート**:")
+                    for i, note in enumerate(related_notes[:3], 1):
+                        note_title = note.get("title", "無題")[:30]
+                        score = note.get("score", 0)
+                        response_parts.append(f"{i}. {note_title} (類似度: {score:.2f})")
+
+                # Suggest additional tags
+                suggested_tags = [
+                    suggestion["tag"]
+                    for suggestion in tag_suggestions
+                    if suggestion["confidence"] <= 0.8 and suggestion["confidence"] > 0.5
+                ]
+                if suggested_tags:
+                    response_parts.append(f"\n💡 **追加タグ候補**: {', '.join(suggested_tags[:3])}")
+
+                await interaction.followup.send("\n".join(response_parts), ephemeral=True)
+
+                # Disable button after successful save
+                button.disabled = True
+                if interaction.message:
+                    await interaction.message.edit(view=self)
+
+                logger.info(f"Voice PKM note created successfully: {note_id}")
+
+            except Exception as e:
+                logger.error(f"Error creating voice PKM note: {e}")
+                await interaction.followup.send(
+                    f"❌ 音声PKMノートの作成中にエラーが発生しました: {str(e)}\n" f"💡 管理者にお問い合わせください。",
+                    ephemeral=True,
+                )
+
+        except Exception as e:
+            logger.error(f"Error in voice save_to_pkm button: {e}", exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ エラーが発生しました。", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ エラーが発生しました。", ephemeral=True)
+            except Exception:
+                logger.error("Failed to send error message to user")
+
+    @discord.ui.button(label="🔗 関連ノート", style=discord.ButtonStyle.secondary)
+    async def show_related_notes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show related notes based on voice transcription content."""
+        logger = logging.getLogger(__name__)
+
+        try:
+            if not self.knowledge_manager:
+                await interaction.response.send_message("❌ PKMサービスが利用できません。", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+
+            # Search for related notes using transcription and summary
+            search_query = (
+                f"{self.summary} {self.transcription[:200]}"  # Limit to avoid token limit
+            )
+
+            try:
+                related_notes = await self.knowledge_manager.search_notes(
+                    query=search_query, limit=5
+                )
+
+                if not related_notes:
+                    await interaction.followup.send("🔍 関連するノートが見つかりませんでした。", ephemeral=True)
+                    return
+
+                # Build response with related notes
+                response_parts = [f"🔗 **音声関連ノート ({len(related_notes)}件)**\n"]
+
+                for i, note in enumerate(related_notes, 1):
+                    note_title = note.get("title", "無題")[:40]
+                    note_tags = note.get("tags", [])
+                    created_at = note.get("created_at", "")
+                    source_type = note.get("source_type", "")
+
+                    # Format creation date
+                    date_str = ""
+                    if created_at:
+                        try:
+                            from datetime import datetime
+
+                            dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                            date_str = f" ({dt.strftime('%m-%d')})"
+                        except Exception:
+                            pass
+
+                    # Add source type indicator
+                    source_emoji = (
+                        "🎤" if source_type == "voice" else "💬" if source_type == "discord" else "📝"
+                    )
+
+                    # Show tags if available
+                    tag_str = ""
+                    if note_tags and isinstance(note_tags, list):
+                        tag_str = f" `{', '.join(note_tags[:3])}`"
+
+                    response_parts.append(
+                        f"{i}. {source_emoji} **{note_title}**{date_str}{tag_str}"
+                    )
+
+                    # Add a brief content preview
+                    content_preview = note.get("content", "")[:80]
+                    if content_preview:
+                        response_parts.append(f"   _{content_preview}..._")
+
+                # Add search tips
+                response_parts.append("\n💡 **ヒント**: `/pkm search <キーワード>` で詳細検索が可能です")
+
+                await interaction.followup.send("\n".join(response_parts), ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error searching related notes: {e}")
+                await interaction.followup.send("❌ 関連ノート検索中にエラーが発生しました。", ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Error in voice show_related_notes: {e}", exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ エラーが発生しました。", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ エラーが発生しました。", ephemeral=True)
+            except Exception:
+                logger.error("Failed to send error message to user")
+
 
 async def setup(bot):
     """Cogをセットアップ"""
     obsidian_service = getattr(bot, "obsidian_service", None)
     note_processing_service = getattr(bot, "note_processing_service", None)
-    await bot.add_cog(Voice(bot, obsidian_service, note_processing_service))
+    knowledge_manager = getattr(bot, "knowledge_manager", None)
+    await bot.add_cog(Voice(bot, obsidian_service, note_processing_service, knowledge_manager))
