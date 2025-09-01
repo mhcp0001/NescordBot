@@ -5,9 +5,11 @@ This module provides comprehensive note management, link extraction, tag managem
 and integration with ChromaDB and ObsidianGitHub services for the NescordBot Phase 4.
 """
 
+import asyncio
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, cast
@@ -1425,6 +1427,210 @@ updated: {note["updated_at"]}
         return await self.link_graph_builder.suggest_bridge_notes(
             cluster1_id, cluster2_id, clusters
         )
+
+    async def bulk_embed_notes(
+        self,
+        note_ids: Optional[List[str]] = None,
+        batch_size: int = 10,
+        max_concurrent: int = 3,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Process large numbers of notes for embedding in batches with memory optimization.
+
+        Args:
+            note_ids: Optional list of specific note IDs.
+                If None, processes all notes without embeddings
+            batch_size: Number of notes to process in each batch
+            max_concurrent: Maximum number of concurrent embedding operations
+            progress_callback: Optional callback for progress updates
+
+        Returns:
+            Dict containing processing results and statistics
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        from ..utils.memory import MemoryOptimizedProcessor
+        from ..utils.progress import BatchProgressTracker
+
+        start_time = time.time()
+
+        try:
+            # Get notes to process
+            if note_ids is None:
+                # Find notes without embeddings
+                async with self.db.get_connection() as connection:
+                    cursor = await connection.execute(
+                        """
+                        SELECT n.id, n.title, n.content
+                        FROM knowledge_notes n
+                        LEFT JOIN chromadb_sync cs ON n.id = cs.note_id
+                        WHERE cs.note_id IS NULL OR cs.sync_status != 'synced'
+                        ORDER BY n.created_at DESC
+                    """
+                    )
+                    notes_data = await cursor.fetchall()
+            else:
+                # Get specific notes
+                placeholders = ",".join("?" * len(note_ids))
+                async with self.db.get_connection() as connection:
+                    cursor = await connection.execute(
+                        f"""
+                        SELECT id, title, content
+                        FROM knowledge_notes
+                        WHERE id IN ({placeholders})
+                        ORDER BY created_at DESC
+                        """,
+                        note_ids,
+                    )
+                    notes_data = await cursor.fetchall()
+
+            if not notes_data:
+                return {
+                    "success": True,
+                    "message": "No notes to process",
+                    "processed": 0,
+                    "failed": 0,
+                    "elapsed_time": 0.0,
+                }
+
+            total_notes = len(notes_data)
+            logger.info(f"Starting bulk embedding for {total_notes} notes")
+
+            # Setup progress tracking
+            progress_tracker = BatchProgressTracker(
+                total_items=total_notes,
+                batch_size=batch_size,
+                description="Bulk Note Embedding",
+                callback=progress_callback,
+            )
+
+            # Memory-optimized processor
+            class NoteEmbeddingProcessor(MemoryOptimizedProcessor):
+                def __init__(self, knowledge_manager):
+                    super().__init__(memory_threshold_mb=400.0)
+                    self.km = knowledge_manager
+
+                async def process_note(self, note_data):
+                    """Process a single note for embedding."""
+                    note_id, title, content = note_data
+                    try:
+                        # Generate embedding
+                        embedding = await self.km.embedding.embed_text(content)
+
+                        # Store in ChromaDB
+                        await self.km.chromadb.add_document(
+                            id=note_id,
+                            text=content,
+                            embedding=embedding,
+                            metadata={"title": title, "note_id": note_id, "type": "knowledge_note"},
+                        )
+
+                        # Update sync status
+                        async with self.km.db.get_connection() as connection:
+                            await connection.execute(
+                                """
+                                INSERT OR REPLACE INTO chromadb_sync
+                                (note_id, sync_status, last_sync, vector_id)
+                                VALUES (?, 'synced', datetime('now'), ?)
+                                """,
+                                (note_id, note_id),
+                            )
+                            await connection.commit()
+
+                        return {"success": True, "note_id": note_id}
+
+                    except Exception as e:
+                        logger.error(f"Failed to process note {note_id}: {e}")
+                        return {"success": False, "note_id": note_id, "error": str(e)}
+
+            processor = NoteEmbeddingProcessor(self)
+
+            # Process notes in batches with concurrency control
+            processed = 0
+            failed = 0
+            semaphore = asyncio.Semaphore(max_concurrent)
+
+            async def process_batch(batch_notes):
+                """Process a batch of notes with concurrency control."""
+
+                async def process_single(note_data):
+                    async with semaphore:
+                        return await processor.process_note(note_data)
+
+                # Process batch concurrently
+                tasks = [process_single(note) for note in batch_notes]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
+
+                batch_processed = 0
+                batch_failed = 0
+                for result in results:
+                    if isinstance(result, Exception):
+                        batch_failed += 1
+                        logger.error(f"Batch processing exception: {result}")
+                    elif isinstance(result, dict) and result.get("success"):
+                        batch_processed += 1
+                    else:
+                        batch_failed += 1
+
+                return batch_processed, batch_failed
+
+            # Process all batches
+            for i in range(0, total_notes, batch_size):
+                batch = notes_data[i : i + batch_size]
+                progress_tracker.start_batch(i // batch_size)
+
+                batch_processed, batch_failed = await process_batch(batch)
+                processed += batch_processed
+                failed += batch_failed
+
+                # Update progress
+                for _ in range(len(batch)):
+                    progress_tracker.update_item()
+
+                progress_tracker.complete_batch()
+
+                # Memory optimization between batches
+                from ..utils.memory import optimize_memory
+
+                gc_result = optimize_memory()
+                if gc_result and gc_result["memory_freed_mb"] > 5.0:
+                    logger.debug(f"Freed {gc_result['memory_freed_mb']:.2f}MB between batches")
+
+                # Small delay between batches to prevent overwhelming
+                await asyncio.sleep(0.5)
+
+            elapsed_time = time.time() - start_time
+
+            result = {
+                "success": True,
+                "total_notes": total_notes,
+                "processed": processed,
+                "failed": failed,
+                "success_rate": processed / total_notes if total_notes > 0 else 0,
+                "elapsed_time": elapsed_time,
+                "rate_per_second": processed / elapsed_time if elapsed_time > 0 else 0,
+                "memory_stats": processor.get_memory_stats(),
+            }
+
+            logger.info(
+                f"Bulk embedding completed: {processed}/{total_notes} notes processed "
+                f"in {elapsed_time:.2f}s ({result['rate_per_second']:.2f}/s)"
+            )
+
+            return result
+
+        except Exception as e:
+            elapsed_time = time.time() - start_time
+            logger.error(f"Bulk embedding failed after {elapsed_time:.2f}s: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "processed": 0,
+                "failed": 0,
+                "elapsed_time": elapsed_time,
+            }
 
     async def close(self) -> None:
         """Clean up resources."""
