@@ -7,9 +7,11 @@ of file operations with automatic retry and error handling.
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from ..config import BotConfig
+from ..utils.memory import MemoryMonitor, optimize_memory
+from ..utils.progress import BatchProgressTracker
 from .database import DatabaseService
 from .git_operations import FileOperation, GitOperationService
 from .github_auth import GitHubAuthManager
@@ -45,7 +47,17 @@ class BatchProcessor:
         # Processing control
         self._processing_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
+        self._cancel_event = asyncio.Event()
         self._initialized = False
+
+        # Memory monitoring
+        self.memory_monitor = MemoryMonitor(
+            threshold_mb=300.0, gc_threshold_mb=100.0  # Warning threshold  # GC trigger threshold
+        )
+
+        # Progress tracking
+        self._progress_tracker: Optional[BatchProgressTracker] = None
+        self._progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None
 
         # Statistics
         self._stats: Dict[str, Any] = {
@@ -144,18 +156,40 @@ class BatchProcessor:
         logger.info("Batch processing loop started")
 
         try:
-            while not self._shutdown_event.is_set():
+            while not self._shutdown_event.is_set() and not self._cancel_event.is_set():
                 try:
                     # Wait for batch processing interval
                     batch_timeout = getattr(self.config, "obsidian_batch_timeout", 30.0)
 
                     try:
-                        await asyncio.wait_for(self._shutdown_event.wait(), timeout=batch_timeout)
-                        # If we get here, shutdown was requested
-                        break
+                        # Check for both shutdown and cancel events
+                        done, pending = await asyncio.wait(
+                            [
+                                asyncio.create_task(self._shutdown_event.wait()),
+                                asyncio.create_task(self._cancel_event.wait()),
+                            ],
+                            timeout=batch_timeout,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+
+                        # Cancel pending tasks
+                        for task in pending:
+                            task.cancel()
+
+                        if done:
+                            # Either shutdown or cancel was requested
+                            break
+
                     except asyncio.TimeoutError:
                         # Timeout is normal, continue processing
                         pass
+
+                    # Check memory usage periodically
+                    gc_result = self.memory_monitor.check_and_optimize()
+                    if gc_result and gc_result["memory_freed_mb"] > 10.0:
+                        logger.info(
+                            f"Memory optimization: freed {gc_result['memory_freed_mb']:.2f}MB"
+                        )
 
                     # Check if there are any processed batches to handle
                     await self._check_completed_batches()
@@ -233,11 +267,22 @@ class BatchProcessor:
         """Get current processing status."""
         queue_status = await self.queue.get_queue_status() if self._initialized else {}
 
+        # Get memory statistics
+        memory_stats = self.memory_monitor.get_memory_usage()
+
+        # Get progress information
+        progress_info = {}
+        if self._progress_tracker:
+            progress_info = self._progress_tracker.get_progress_info()
+
         return {
             "initialized": self._initialized,
             "processing_active": bool(self._processing_task and not self._processing_task.done()),
+            "cancelled": self._cancel_event.is_set(),
             "queue_status": queue_status,
             "statistics": self._stats.copy(),
+            "memory_stats": memory_stats,
+            "progress": progress_info,
             "git_status": await self.git_operations.get_repository_status()
             if self._initialized
             else {},
@@ -273,6 +318,165 @@ class BatchProcessor:
         finally:
             # Always mark as not initialized
             self._initialized = False
+
+    async def cancel_processing(self) -> bool:
+        """
+        Cancel ongoing batch processing.
+
+        Returns:
+            bool: True if cancellation was successful
+        """
+        if not self._processing_task or self._processing_task.done():
+            return False
+
+        logger.info("Cancelling batch processing...")
+        self._cancel_event.set()
+
+        try:
+            # Wait for processing task to complete
+            await asyncio.wait_for(self._processing_task, timeout=10.0)
+            logger.info("Batch processing cancelled successfully")
+            return True
+        except asyncio.TimeoutError:
+            logger.warning("Batch processing cancellation timed out, forcing termination")
+            self._processing_task.cancel()
+            try:
+                await self._processing_task
+            except asyncio.CancelledError:
+                pass
+            return True
+        except Exception as e:
+            logger.error(f"Error during batch processing cancellation: {e}")
+            return False
+        finally:
+            self._cancel_event.clear()
+
+    def set_progress_callback(self, callback: Optional[Callable[[Dict[str, Any]], None]]) -> None:
+        """Set progress callback for batch operations."""
+        self._progress_callback = callback
+
+    async def process_with_progress(
+        self,
+        batch_size: Optional[int] = None,
+        progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Process batch with detailed progress tracking.
+
+        Args:
+            batch_size: Optional batch size override
+            progress_callback: Optional progress callback
+
+        Returns:
+            Dict containing processing results and statistics
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        # Set progress callback if provided
+        if progress_callback:
+            self.set_progress_callback(progress_callback)
+
+        try:
+            # Get queue status to setup progress tracking
+            status = await self.queue.get_queue_status()
+            pending_count = status.get("pending", 0)
+
+            if pending_count == 0:
+                return {
+                    "success": True,
+                    "message": "No pending requests to process",
+                    "files_processed": 0,
+                    "memory_stats": self.memory_monitor.get_memory_usage(),
+                }
+
+            # Setup progress tracker
+            config_batch_size: int = getattr(self.config, "obsidian_batch_size", 5)
+            effective_batch_size: int = batch_size if batch_size is not None else config_batch_size
+            self._progress_tracker = BatchProgressTracker(
+                total_items=pending_count,
+                batch_size=effective_batch_size,
+                description="Batch Processing",
+                callback=self._progress_callback,
+            )
+
+            logger.info(
+                f"Starting batch processing with progress tracking (items: {pending_count})"
+            )
+
+            # Start queue processing temporarily if not running
+            was_processing = self._processing_task and not self._processing_task.done()
+            if not was_processing:
+                await self.queue.start_processing()
+
+                # Monitor progress with memory optimization
+                start_time = asyncio.get_event_loop().time()
+                while True:
+                    await asyncio.sleep(2.0)
+
+                    # Check for cancellation
+                    if self._cancel_event.is_set():
+                        break
+
+                    # Update progress
+                    new_status = await self.queue.get_queue_status()
+                    current_pending = new_status.get("pending", 0)
+                    processed = pending_count - current_pending
+
+                    if self._progress_tracker:
+                        self._progress_tracker.update_item(
+                            processed - self._progress_tracker.current_item
+                        )
+
+                    # Perform memory optimization
+                    optimize_memory()
+
+                    # Check if done
+                    if current_pending == 0 or processed >= pending_count:
+                        break
+
+                    # Timeout check (max 5 minutes)
+                    if asyncio.get_event_loop().time() - start_time > 300:
+                        logger.warning("Batch processing timeout reached")
+                        break
+
+                # Stop processing
+                await self.queue.stop_processing()
+
+            # Get final statistics
+            final_status = await self.queue.get_queue_status()
+            final_processed = pending_count - final_status.get("pending", 0)
+            memory_stats = self.memory_monitor.get_memory_usage()
+
+            result = {
+                "success": True,
+                "files_processed": final_processed,
+                "remaining_pending": final_status.get("pending", 0),
+                "completed": final_status.get("completed", 0),
+                "failed": final_status.get("failed", 0),
+                "memory_stats": memory_stats,
+                "cancelled": self._cancel_event.is_set(),
+            }
+
+            if self._progress_tracker:
+                result["progress"] = self._progress_tracker.get_progress_info()
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Batch processing with progress failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "files_processed": 0,
+                "memory_stats": self.memory_monitor.get_memory_usage(),
+            }
+        finally:
+            self._progress_tracker = None
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get current memory usage statistics."""
+        return self.memory_monitor.get_memory_usage()
 
 
 # Enhanced PersistentQueue to work with GitOperationService
