@@ -19,6 +19,7 @@ from .knowledge_manager import KnowledgeManager, KnowledgeManagerError
 from .note_processing import NoteProcessingService
 from .obsidian_github import ObsidianGitHubService, ObsidianSyncStatus
 from .persistent_queue import FileRequest, PersistentQueue
+from .phase4_monitor import Phase4Monitor, Phase4MonitorError
 from .search_engine import (
     SearchEngine,
     SearchEngineError,
@@ -102,4 +103,6 @@ __all__ = [
     "FallbackLevel",
     "APIMonitor",
     "APIMonitorError",
+    "Phase4Monitor",
+    "Phase4MonitorError",
 ]

@@ -674,6 +674,345 @@ class AdminCog(commands.Cog):
             )
             await interaction.followup.send(embed=embed)
 
+    @discord.app_commands.command(name="stats", description="📊 システムメトリクスとパフォーマンス統計を表示")
+    async def stats(self, interaction: discord.Interaction):
+        """Display system metrics and performance statistics."""
+        if not await self._check_admin_permissions(interaction):
+            return
+
+        await interaction.response.defer()
+
+        try:
+            # Phase4Monitorサービスを取得
+            from ..services import Phase4Monitor, ServiceNotFoundError
+
+            try:
+                phase4_monitor = self.bot.service_container.get_service(Phase4Monitor)
+            except ServiceNotFoundError:
+                embed = discord.Embed(
+                    title="❌ システムメトリクス",
+                    description="Phase4Monitor サービスが利用できません",
+                    colour=discord.Colour.red(),
+                )
+                await interaction.followup.send(embed=embed)
+                return
+
+            # ダッシュボードデータを取得
+            dashboard_data = await phase4_monitor.get_dashboard_data()
+            current_snapshot = dashboard_data.get("current", {})
+
+            # メイン統計情報Embed
+            embed = discord.Embed(
+                title="📊 システムメトリクス & パフォーマンス統計",
+                description="PKM機能とシステム全体の監視状況",
+                colour=discord.Colour.blue(),
+            )
+
+            # トークン使用量
+            token_usage = current_snapshot.get("token_usage", {})
+            monthly_usage = token_usage.get("monthly_usage", {})
+            if monthly_usage:
+                embed.add_field(
+                    name="🎯 トークン使用状況",
+                    value=(
+                        f"月間使用量: {monthly_usage.get('current_monthly_tokens', 0):,} tokens\n"
+                        f"月間制限: {monthly_usage.get('monthly_limit', 0):,} tokens\n"
+                        f"使用率: {monthly_usage.get('monthly_usage_percentage', 0):.1f}%"
+                    ),
+                    inline=False,
+                )
+
+            # メモリ使用量
+            memory_usage = current_snapshot.get("memory_usage", {})
+            current_memory = memory_usage.get("current_usage", {})
+            if current_memory:
+                embed.add_field(
+                    name="💾 メモリ使用状況",
+                    value=(
+                        f"現在の使用量: {current_memory.get('current_mb', 0):.1f} MB\n"
+                        f"GC必要: {'はい' if memory_usage.get('should_trigger_gc', False) else 'いいえ'}\n"
+                        f"最大使用量: {current_memory.get('peak_mb', 0):.1f} MB"
+                    ),
+                    inline=True,
+                )
+
+            # PKMパフォーマンス
+            pkm_performance = current_snapshot.get("pkm_performance", {})
+            pkm_summary = pkm_performance.get("pkm_summary", {})
+
+            search_stats = pkm_summary.get("search_engine", {})
+            knowledge_stats = pkm_summary.get("knowledge_manager", {})
+
+            if search_stats:
+                embed.add_field(
+                    name="🔍 検索エンジン (過去1時間)",
+                    value=(
+                        f"クエリ数: {search_stats.get('query_count', 0)}\n"
+                        f"平均応答時間: {search_stats.get('avg_query_time', 0):.3f}s\n"
+                        f"平均結果数: {search_stats.get('avg_result_count', 0):.1f}"
+                    ),
+                    inline=True,
+                )
+
+            if knowledge_stats:
+                embed.add_field(
+                    name="🧠 ナレッジマネージャー (過去1時間)",
+                    value=(
+                        f"操作数: {knowledge_stats.get('operation_count', 0)}\n"
+                        f"成功率: {knowledge_stats.get('success_rate', 0):.1%}\n"
+                        f"平均処理時間: {knowledge_stats.get('avg_processing_time', 0):.3f}s"
+                    ),
+                    inline=True,
+                )
+
+            # システム健全性
+            system_health = current_snapshot.get("system_health", {})
+            db_health = system_health.get("database", {})
+
+            if db_health:
+                db_status = db_health.get("status", "unknown")
+                embed.add_field(
+                    name="🗄️ データベース状態",
+                    value=(
+                        f"状態: {'✅ 正常' if db_status == 'healthy' else '❌ エラー'}\n"
+                        f"接続テスト: {'成功' if db_health.get('connection_test', False) else '失敗'}\n"
+                        f"クエリ時間: {db_health.get('query_time', 0):.3f}s"
+                    ),
+                    inline=True,
+                )
+
+            # API監視状態
+            api_status = dashboard_data.get("api_status", {})
+            if api_status:
+                fallback_level = api_status.get("fallback_level", "unknown")
+                monitoring_active = api_status.get("monitoring_active", False)
+
+                embed.add_field(
+                    name="🚨 API監視状態",
+                    value=(
+                        f"監視状態: {'🟢 稼働中' if monitoring_active else '🔴 停止'}\n"
+                        f"フォールバックレベル: {fallback_level}\n"
+                        f"最終更新: {dashboard_data.get('last_update', 'N/A')}"
+                    ),
+                    inline=False,
+                )
+
+            embed.set_footer(text=f"最終更新: {current_snapshot.get('timestamp', 'N/A')}")
+
+            # 追加の詳細情報ボタン付きView
+            view = StatsDetailView(phase4_monitor)
+
+            await interaction.followup.send(embed=embed, view=view)
+
+        except Exception as e:
+            logger.error(f"Stats command error: {e}")
+            embed = discord.Embed(
+                title="❌ システムメトリクス",
+                description=f"統計情報の取得中にエラーが発生しました: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed)
+
+
+class StatsDetailView(discord.ui.View):
+    """詳細なシステム統計情報の表示用View."""
+
+    def __init__(self, phase4_monitor):
+        super().__init__(timeout=300.0)  # 5分でタイムアウト
+        self.phase4_monitor = phase4_monitor
+
+    @discord.ui.button(label="📈 履歴データ", style=discord.ButtonStyle.secondary)
+    async def show_history(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """過去1時間のメトリクス履歴を表示."""
+        await interaction.response.defer()
+
+        try:
+            history_data = await self.phase4_monitor.get_metrics_history(hours=1)
+
+            if not history_data:
+                embed = discord.Embed(
+                    title="📈 履歴データ",
+                    description="履歴データが見つかりませんでした",
+                    colour=discord.Colour.orange(),
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            # 過去1時間の統計を計算
+            token_usages = []
+            memory_usages = []
+            search_counts = []
+
+            for snapshot in history_data[-12:]:  # 最新12個（約1時間分）
+                token_usage = snapshot.get("token_usage", {}).get("monthly_usage", {})
+                if token_usage:
+                    token_usages.append(token_usage.get("monthly_usage_percentage", 0))
+
+                memory_usage = snapshot.get("memory_usage", {}).get("current_usage", {})
+                if memory_usage:
+                    memory_usages.append(memory_usage.get("current_mb", 0))
+
+                pkm_perf = snapshot.get("pkm_performance", {}).get("pkm_summary", {})
+                search_engine = pkm_perf.get("search_engine", {})
+                if search_engine:
+                    search_counts.append(search_engine.get("query_count", 0))
+
+            embed = discord.Embed(
+                title="📈 システム履歴データ (過去1時間)",
+                colour=discord.Colour.green(),
+            )
+
+            if token_usages:
+                avg_token_usage = sum(token_usages) / len(token_usages)
+                embed.add_field(
+                    name="🎯 トークン使用率推移",
+                    value=(
+                        f"平均: {avg_token_usage:.1f}%\n"
+                        f"最新: {token_usages[-1]:.1f}%\n"
+                        f"データポイント: {len(token_usages)}"
+                    ),
+                    inline=True,
+                )
+
+            if memory_usages:
+                avg_memory = sum(memory_usages) / len(memory_usages)
+                max_memory = max(memory_usages)
+                embed.add_field(
+                    name="💾 メモリ使用量推移",
+                    value=(
+                        f"平均: {avg_memory:.1f} MB\n"
+                        f"最大: {max_memory:.1f} MB\n"
+                        f"最新: {memory_usages[-1]:.1f} MB"
+                    ),
+                    inline=True,
+                )
+
+            if search_counts:
+                total_searches = sum(search_counts)
+                embed.add_field(
+                    name="🔍 検索活動",
+                    value=(
+                        f"総クエリ数: {total_searches}\n"
+                        f"平均/時間: {total_searches/max(1, len(search_counts)):.1f}\n"
+                        f"最新時間: {search_counts[-1] if search_counts else 0}"
+                    ),
+                    inline=True,
+                )
+
+            embed.set_footer(text=f"履歴データ数: {len(history_data)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            embed = discord.Embed(
+                title="❌ 履歴データエラー",
+                description=f"履歴データの取得中にエラー: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🔧 システム詳細", style=discord.ButtonStyle.secondary)
+    async def show_system_details(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        """詳細なシステム情報を表示."""
+        await interaction.response.defer()
+
+        try:
+            # Phase4Monitorのヘルスチェック
+            health_check = await self.phase4_monitor.health_check()
+
+            embed = discord.Embed(
+                title="🔧 システム詳細情報",
+                colour=discord.Colour.blue(),
+            )
+
+            # Phase4Monitor自体の状態
+            status = health_check.get("status", "unknown")
+            embed.add_field(
+                name="🤖 Phase4Monitor状態",
+                value=(
+                    f"状態: {'✅ 正常' if status == 'healthy' else '❌ エラー'}\n"
+                    f"監視活動: {'🟢 稼働中' if health_check.get('monitoring_active', False) else '🔴 停止'}\n"
+                    f"履歴サイズ: {health_check.get('metric_history_size', 0)}"
+                ),
+                inline=False,
+            )
+
+            # PKMメトリクス詳細
+            pkm_metrics = health_check.get("pkm_metrics", {})
+            if pkm_metrics:
+                embed.add_field(
+                    name="📊 PKMメトリクス詳細",
+                    value=(
+                        f"検索クエリ履歴: {pkm_metrics.get('search_queries', 0)}\n"
+                        f"ナレッジ操作履歴: {pkm_metrics.get('knowledge_operations', 0)}\n"
+                        f"ChromaDB操作履歴: {pkm_metrics.get('chromadb_operations', 0)}\n"
+                        f"DB操作履歴: {pkm_metrics.get('database_operations', 0)}"
+                    ),
+                    inline=True,
+                )
+
+            # システムの技術情報
+            embed.add_field(
+                name="🛠️ 技術情報",
+                value=("監視間隔: 60秒\n" "履歴保持期間: 24時間\n" "最大履歴サイズ: 1440エントリ\n" "メトリクス自動収集: 有効"),
+                inline=True,
+            )
+
+            embed.set_footer(text=f"ヘルスチェック実行時間: {health_check.get('timestamp', 'N/A')}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            embed = discord.Embed(
+                title="❌ システム詳細エラー",
+                description=f"システム情報の取得中にエラー: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="🔄 更新", style=discord.ButtonStyle.primary)
+    async def refresh_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """統計情報を強制更新."""
+        await interaction.response.defer()
+
+        try:
+            # 現在のスナップショットを強制取得
+            current_snapshot = await self.phase4_monitor.get_current_snapshot()
+
+            embed = discord.Embed(
+                title="🔄 統計情報更新完了",
+                description="最新のシステムメトリクスを取得しました",
+                colour=discord.Colour.green(),
+            )
+
+            # 簡易サマリー表示
+            token_usage = current_snapshot.get("token_usage", {}).get("monthly_usage", {})
+            if token_usage:
+                embed.add_field(
+                    name="🎯 更新後のトークン使用率",
+                    value=f"{token_usage.get('monthly_usage_percentage', 0):.1f}%",
+                    inline=True,
+                )
+
+            memory_usage = current_snapshot.get("memory_usage", {}).get("current_usage", {})
+            if memory_usage:
+                embed.add_field(
+                    name="💾 更新後のメモリ使用量",
+                    value=f"{memory_usage.get('current_mb', 0):.1f} MB",
+                    inline=True,
+                )
+
+            embed.set_footer(text=f"更新時刻: {current_snapshot.get('timestamp', 'N/A')}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            embed = discord.Embed(
+                title="❌ 更新エラー",
+                description=f"統計情報の更新中にエラー: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
 
 class ConfirmationView(discord.ui.View):
     """Confirmation dialog for dangerous operations."""
