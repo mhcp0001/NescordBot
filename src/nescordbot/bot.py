@@ -17,15 +17,18 @@ from .config import get_config_manager
 from .logger import get_logger
 from .security import SecurityValidator
 from .services import (
+    APIMonitor,
     BatchProcessor,
     DatabaseService,
     EmbeddingService,
+    FallbackManager,
     GitHubAuthManager,
     GitHubService,
     GitOperationService,
     KnowledgeManager,
     NoteProcessingService,
     ObsidianGitHubService,
+    Phase4Monitor,
     SearchEngine,
     SyncManager,
     TokenManager,
@@ -467,9 +470,49 @@ class NescordBot(commands.Bot):
             self.service_container.register_factory(KnowledgeManager, create_knowledge_manager)
             self.service_container.register_factory(SearchEngine, create_search_engine)
 
+            # FallbackManager factory
+            def create_fallback_manager() -> FallbackManager:
+                from .services.fallback_manager import FallbackManager
+
+                return FallbackManager(self.config)
+
+            self.service_container.register_factory(FallbackManager, create_fallback_manager)
+
+            # APIMonitor factory (depends on TokenManager and FallbackManager)
+            def create_api_monitor() -> APIMonitor:
+                from .services.api_monitor import APIMonitor
+
+                token_manager = self.service_container.get_service(TokenManager)
+                fallback_manager = self.service_container.get_service(FallbackManager)
+                return APIMonitor(self.config, token_manager, fallback_manager)
+
+            self.service_container.register_factory(APIMonitor, create_api_monitor)
+
+            # Phase4Monitor factory (depends on multiple services)
+            def create_phase4_monitor() -> Phase4Monitor:
+                from .services.phase4_monitor import Phase4Monitor
+
+                token_manager = self.service_container.get_service(TokenManager)
+                api_monitor = self.service_container.get_service(APIMonitor)
+                search_engine = self.service_container.get_service(SearchEngine)
+                knowledge_manager = self.service_container.get_service(KnowledgeManager)
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                return Phase4Monitor(
+                    config=self.config,
+                    token_manager=token_manager,
+                    api_monitor=api_monitor,
+                    search_engine=search_engine,
+                    knowledge_manager=knowledge_manager,
+                    chromadb_service=chromadb_service,
+                    database_service=self.database_service,
+                )
+
+            self.service_container.register_factory(Phase4Monitor, create_phase4_monitor)
+
             self.logger.info(
-                "ServiceContainer initialized with EmbeddingService, "
-                "ChromaDBService, TokenManager, SyncManager, KnowledgeManager, and SearchEngine"
+                "ServiceContainer initialized with EmbeddingService, ChromaDBService, "
+                "TokenManager, SyncManager, KnowledgeManager, SearchEngine, FallbackManager, "
+                "APIMonitor, and Phase4Monitor"
             )
 
         except Exception as e:
