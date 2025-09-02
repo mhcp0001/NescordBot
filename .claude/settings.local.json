@@ -38,7 +38,9 @@
       "Bash(git log:*)",
       "Bash(gh pr create:*)",
       "Bash(git checkout:*)",
-      "Bash(git stash push:*)"
+      "Bash(git stash push:*)",
+      "Bash(gh api:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
