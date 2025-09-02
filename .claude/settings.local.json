@@ -40,7 +40,9 @@
       "Bash(git checkout:*)",
       "Bash(git stash push:*)",
       "Bash(gh api:*)",
-      "WebSearch"
+      "WebSearch",
+      "mcp__vibe_kanban__list_tasks",
+      "mcp__vibe_kanban__update_task"
     ],
     "deny": [],
     "ask": []
