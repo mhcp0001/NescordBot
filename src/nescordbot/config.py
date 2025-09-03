@@ -155,6 +155,22 @@ class BotConfig(BaseModel):
         default=100, description="Token usage threshold for 100% alert"
     )
 
+    # Phase 4: PrivacyManager settings
+    privacy_enabled: bool = Field(default=True, description="Enable privacy protection system")
+    privacy_default_level: str = Field(
+        default="medium", description="Default privacy level: none, low, medium, high"
+    )
+    privacy_masking_type: str = Field(
+        default="asterisk", description="Default masking type: asterisk, partial, hash, remove"
+    )
+    privacy_pii_detection: bool = Field(default=True, description="Enable PII detection")
+    privacy_api_key_detection: bool = Field(default=True, description="Enable API key detection")
+    privacy_audit_enabled: bool = Field(default=True, description="Enable security audit logging")
+    privacy_alert_integration: bool = Field(
+        default=True, description="Integrate privacy events with AlertManager"
+    )
+    privacy_retention_days: int = Field(default=90, description="Privacy event retention days")
+
     @field_validator("discord_token")
     @classmethod
     def validate_discord_token(cls, v):
@@ -634,6 +650,17 @@ class ConfigManager:
                 alert_token_threshold_90=int(os.getenv("ALERT_TOKEN_THRESHOLD_90", "90")),
                 alert_token_threshold_95=int(os.getenv("ALERT_TOKEN_THRESHOLD_95", "95")),
                 alert_token_threshold_100=int(os.getenv("ALERT_TOKEN_THRESHOLD_100", "100")),
+                # Phase 4: PrivacyManager settings
+                privacy_enabled=os.getenv("PRIVACY_ENABLED", "true").lower() == "true",
+                privacy_default_level=os.getenv("PRIVACY_DEFAULT_LEVEL", "medium"),
+                privacy_masking_type=os.getenv("PRIVACY_MASKING_TYPE", "asterisk"),
+                privacy_pii_detection=os.getenv("PRIVACY_PII_DETECTION", "true").lower() == "true",
+                privacy_api_key_detection=os.getenv("PRIVACY_API_KEY_DETECTION", "true").lower()
+                == "true",
+                privacy_audit_enabled=os.getenv("PRIVACY_AUDIT_ENABLED", "true").lower() == "true",
+                privacy_alert_integration=os.getenv("PRIVACY_ALERT_INTEGRATION", "true").lower()
+                == "true",
+                privacy_retention_days=int(os.getenv("PRIVACY_RETENTION_DAYS", "90")),
             )
         return self._config
 

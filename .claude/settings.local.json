@@ -20,7 +20,8 @@
       "mcp__vibe_kanban__list_projects",
       "Bash(poetry run mypy:*)",
       "Bash(poetry run isort:*)",
-      "Bash(poetry run flake8:*)"
+      "Bash(poetry run flake8:*)",
+      "Bash(git pull:*)"
     ],
     "deny": [],
     "ask": []
