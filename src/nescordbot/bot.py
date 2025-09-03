@@ -17,6 +17,7 @@ from .config import get_config_manager
 from .logger import get_logger
 from .security import SecurityValidator
 from .services import (
+    AlertManager,
     APIMonitor,
     BatchProcessor,
     DatabaseService,
@@ -119,6 +120,30 @@ class NescordBot(commands.Bot):
 
             # Initialize ObsidianGitHub services if available
             await self._init_obsidian_services_async()
+
+            # Initialize and start Phase 4 monitoring services
+            if self.service_container:
+                try:
+                    # Initialize services
+                    await self.service_container.initialize_services()
+                    self.logger.info("ServiceContainer services initialized")
+
+                    # Start Phase4Monitor if available
+                    if self.service_container.has_service(Phase4Monitor):
+                        phase4_monitor = self.service_container.get_service(Phase4Monitor)
+                        await phase4_monitor.start_monitoring()
+                        self.logger.info("Phase4Monitor started")
+
+                    # Start AlertManager if available and enabled
+                    if self.service_container.has_service(AlertManager) and getattr(
+                        self.config, "alert_enabled", True
+                    ):
+                        alert_manager = self.service_container.get_service(AlertManager)
+                        await alert_manager.start_monitoring()
+                        self.logger.info("AlertManager started")
+
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize Phase 4 services: {e}")
 
             # Load cogs
             await self._load_cogs()
@@ -330,6 +355,28 @@ class NescordBot(commands.Bot):
             await self.obsidian_service.shutdown()
             self.logger.info("ObsidianGitHub service stopped")
 
+        # Shutdown ServiceContainer services
+        if hasattr(self, "service_container") and self.service_container:
+            try:
+                # Stop AlertManager if running
+                if self.service_container.has_service(AlertManager):
+                    alert_manager = self.service_container.get_service(AlertManager)
+                    await alert_manager.close()
+                    self.logger.info("AlertManager stopped")
+
+                # Stop Phase4Monitor if running
+                if self.service_container.has_service(Phase4Monitor):
+                    phase4_monitor = self.service_container.get_service(Phase4Monitor)
+                    await phase4_monitor.close()
+                    self.logger.info("Phase4Monitor stopped")
+
+                # Shutdown all services
+                await self.service_container.shutdown_services()
+                self.logger.info("ServiceContainer services stopped")
+
+            except Exception as e:
+                self.logger.error(f"Error shutting down ServiceContainer: {e}")
+
         await super().close()
         self.logger.info("Bot shutdown complete")
 
@@ -509,10 +556,26 @@ class NescordBot(commands.Bot):
 
             self.service_container.register_factory(Phase4Monitor, create_phase4_monitor)
 
+            # AlertManager factory (depends on Phase4Monitor and TokenManager)
+            def create_alert_manager() -> AlertManager:
+                from .services.alert_manager import AlertManager
+
+                phase4_monitor = self.service_container.get_service(Phase4Monitor)
+                token_manager = self.service_container.get_service(TokenManager)
+                return AlertManager(
+                    config=self.config,
+                    bot=self,  # Pass the bot instance for Discord notifications
+                    database_service=self.database_service,
+                    phase4_monitor=phase4_monitor,
+                    token_manager=token_manager,
+                )
+
+            self.service_container.register_factory(AlertManager, create_alert_manager)
+
             self.logger.info(
                 "ServiceContainer initialized with EmbeddingService, ChromaDBService, "
                 "TokenManager, SyncManager, KnowledgeManager, SearchEngine, FallbackManager, "
-                "APIMonitor, and Phase4Monitor"
+                "APIMonitor, Phase4Monitor, and AlertManager"
             )
 
         except Exception as e:

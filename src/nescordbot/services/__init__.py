@@ -6,6 +6,7 @@ and infrastructure operations for the bot.
 """
 
 from ..security import SecurityValidator
+from .alert_manager import Alert, AlertManager, AlertManagerError, AlertRule, AlertSeverity
 from .api_monitor import APIMonitor, APIMonitorError
 from .batch_processor import BatchProcessor, GitHubIntegratedQueue
 from .chromadb_service import ChromaDBService, DocumentMetadata, SearchResult
@@ -51,6 +52,11 @@ from .sync_manager import (
 from .token_manager import TokenLimitExceededError, TokenManager, TokenUsageError
 
 __all__ = [
+    "Alert",
+    "AlertManager",
+    "AlertManagerError",
+    "AlertRule",
+    "AlertSeverity",
     "DatabaseService",
     "IDataStore",
     "ChromaDBService",
