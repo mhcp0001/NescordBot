@@ -9,7 +9,18 @@
       "Bash(poetry run pytest:*)",
       "Bash(poetry run black:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git stash:*)",
+      "Bash(gh project list:*)",
+      "Bash(gh project item-list:*)",
+      "Bash(gh project item-edit:*)",
+      "mcp__serena",
+      "Bash(git checkout:*)",
+      "mcp__vibe_kanban__update_task",
+      "mcp__vibe_kanban__list_projects",
+      "Bash(poetry run mypy:*)",
+      "Bash(poetry run isort:*)",
+      "Bash(poetry run flake8:*)"
     ],
     "deny": [],
     "ask": []

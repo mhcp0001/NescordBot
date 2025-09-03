@@ -130,6 +130,31 @@ class BotConfig(BaseModel):
     api_timeout_seconds: int = Field(default=30, description="API request timeout in seconds")
     max_retry_attempts: int = Field(default=3, description="Maximum retry attempts for API calls")
 
+    # Phase 4: AlertManager settings
+    alert_enabled: bool = Field(default=True, description="Enable alert monitoring system")
+    alert_channel_id: Optional[int] = Field(
+        default=None, description="Discord channel ID for alert notifications"
+    )
+    alert_monitoring_interval: int = Field(
+        default=300, description="Alert monitoring interval in seconds"
+    )
+    alert_default_cooldown: int = Field(default=30, description="Default alert cooldown in minutes")
+    alert_max_history_size: int = Field(
+        default=100, description="Maximum number of alerts to keep in history"
+    )
+    alert_memory_threshold_mb: int = Field(
+        default=500, description="Memory usage threshold for alerts in MB"
+    )
+    alert_token_threshold_90: int = Field(
+        default=90, description="Token usage threshold for 90% alert"
+    )
+    alert_token_threshold_95: int = Field(
+        default=95, description="Token usage threshold for 95% alert"
+    )
+    alert_token_threshold_100: int = Field(
+        default=100, description="Token usage threshold for 100% alert"
+    )
+
     @field_validator("discord_token")
     @classmethod
     def validate_discord_token(cls, v):
@@ -380,6 +405,71 @@ class BotConfig(BaseModel):
             raise ValueError("Maximum retry attempts should not exceed 10")
         return v
 
+    # AlertManager validators
+    @field_validator("alert_monitoring_interval")
+    @classmethod
+    def validate_alert_monitoring_interval(cls, v):
+        """Validate alert monitoring interval."""
+        if v < 60:
+            raise ValueError("Alert monitoring interval must be at least 60 seconds")
+        if v > 3600:
+            raise ValueError("Alert monitoring interval should not exceed 3600 seconds")
+        return v
+
+    @field_validator("alert_default_cooldown")
+    @classmethod
+    def validate_alert_default_cooldown(cls, v):
+        """Validate alert default cooldown."""
+        if v < 1:
+            raise ValueError("Alert default cooldown must be at least 1 minute")
+        if v > 1440:  # 24 hours
+            raise ValueError("Alert default cooldown should not exceed 1440 minutes (24 hours)")
+        return v
+
+    @field_validator("alert_max_history_size")
+    @classmethod
+    def validate_alert_max_history_size(cls, v):
+        """Validate alert max history size."""
+        if v < 10:
+            raise ValueError("Alert max history size must be at least 10")
+        if v > 1000:
+            raise ValueError("Alert max history size should not exceed 1000")
+        return v
+
+    @field_validator("alert_memory_threshold_mb")
+    @classmethod
+    def validate_alert_memory_threshold_mb(cls, v):
+        """Validate alert memory threshold."""
+        if v < 100:
+            raise ValueError("Alert memory threshold must be at least 100 MB")
+        if v > 4096:  # 4GB
+            raise ValueError("Alert memory threshold should not exceed 4096 MB")
+        return v
+
+    @field_validator("alert_token_threshold_90")
+    @classmethod
+    def validate_alert_token_threshold_90(cls, v):
+        """Validate 90% token threshold."""
+        if v < 50 or v > 100:
+            raise ValueError("90% token threshold must be between 50 and 100")
+        return v
+
+    @field_validator("alert_token_threshold_95")
+    @classmethod
+    def validate_alert_token_threshold_95(cls, v):
+        """Validate 95% token threshold."""
+        if v < 50 or v > 100:
+            raise ValueError("95% token threshold must be between 50 and 100")
+        return v
+
+    @field_validator("alert_token_threshold_100")
+    @classmethod
+    def validate_alert_token_threshold_100(cls, v):
+        """Validate 100% token threshold."""
+        if v < 50 or v > 100:
+            raise ValueError("100% token threshold must be between 50 and 100")
+        return v
+
     @model_validator(mode="after")
     def validate_github_integration(self):
         """Validate GitHub integration settings consistency."""
@@ -507,6 +597,43 @@ class ConfigManager:
                 max_file_size_kb=int(os.getenv("MAX_FILE_SIZE_KB", "1024")),
                 enable_content_validation=os.getenv("ENABLE_CONTENT_VALIDATION", "true").lower()
                 == "true",
+                # Phase 4: Gemini API settings
+                gemini_api_key=os.getenv("GEMINI_API_KEY"),
+                gemini_monthly_limit=int(os.getenv("GEMINI_MONTHLY_LIMIT", "50000")),
+                gemini_requests_per_minute=int(os.getenv("GEMINI_REQUESTS_PER_MINUTE", "15")),
+                # Phase 4: ChromaDB settings
+                chromadb_persist_directory=os.getenv("CHROMADB_PERSIST_DIRECTORY", "data/chromadb"),
+                chromadb_collection_name=os.getenv("CHROMADB_COLLECTION_NAME", "nescord_knowledge"),
+                chromadb_distance_metric=os.getenv("CHROMADB_DISTANCE_METRIC", "cosine"),
+                chromadb_max_batch_size=int(os.getenv("CHROMADB_MAX_BATCH_SIZE", "100")),
+                # Phase 4: PKM feature settings
+                pkm_enabled=os.getenv("PKM_ENABLED", "false").lower() == "true",
+                hybrid_search_enabled=os.getenv("HYBRID_SEARCH_ENABLED", "true").lower() == "true",
+                hybrid_search_alpha=float(os.getenv("HYBRID_SEARCH_ALPHA", "0.7")),
+                max_search_results=int(os.getenv("MAX_SEARCH_RESULTS", "10")),
+                embedding_dimension=int(os.getenv("EMBEDDING_DIMENSION", "768")),
+                # Phase 4: Advanced RRF settings
+                rrf_k_value=int(os.getenv("RRF_K_VALUE", "60")),
+                enable_dynamic_rrf_k=os.getenv("ENABLE_DYNAMIC_RRF_K", "true").lower() == "true",
+                search_cache_enabled=os.getenv("SEARCH_CACHE_ENABLED", "true").lower() == "true",
+                search_cache_ttl_seconds=int(os.getenv("SEARCH_CACHE_TTL_SECONDS", "300")),
+                # Phase 4: API migration mode settings
+                ai_api_mode=os.getenv("AI_API_MODE", "openai"),
+                enable_api_fallback=os.getenv("ENABLE_API_FALLBACK", "true").lower() == "true",
+                api_timeout_seconds=int(os.getenv("API_TIMEOUT_SECONDS", "30")),
+                max_retry_attempts=int(os.getenv("MAX_RETRY_ATTEMPTS", "3")),
+                # Phase 4: AlertManager settings
+                alert_enabled=os.getenv("ALERT_ENABLED", "true").lower() == "true",
+                alert_channel_id=int(channel_id)
+                if (channel_id := os.getenv("ALERT_CHANNEL_ID"))
+                else None,
+                alert_monitoring_interval=int(os.getenv("ALERT_MONITORING_INTERVAL", "300")),
+                alert_default_cooldown=int(os.getenv("ALERT_DEFAULT_COOLDOWN", "30")),
+                alert_max_history_size=int(os.getenv("ALERT_MAX_HISTORY_SIZE", "100")),
+                alert_memory_threshold_mb=int(os.getenv("ALERT_MEMORY_THRESHOLD_MB", "500")),
+                alert_token_threshold_90=int(os.getenv("ALERT_TOKEN_THRESHOLD_90", "90")),
+                alert_token_threshold_95=int(os.getenv("ALERT_TOKEN_THRESHOLD_95", "95")),
+                alert_token_threshold_100=int(os.getenv("ALERT_TOKEN_THRESHOLD_100", "100")),
             )
         return self._config
 
