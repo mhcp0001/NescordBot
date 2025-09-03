@@ -674,10 +674,10 @@ class TestPrivacyManagerIntegration:
         # Store initial rule count
         initial_rule_count = len(privacy_manager._privacy_rules)
 
-        # Add custom rule with debugging
+        # Add custom rule with proper boundary conditions
         rule_id = await privacy_manager.add_custom_rule(
             name="Custom Phone Pattern",
-            pattern=r"\(\d{3}\)\s\d{3}-\d{4}",
+            pattern=r"(?<!\w)\(\d{3}\)\s\d{3}-\d{4}(?!\w)",
             privacy_level=PrivacyLevel.MEDIUM,
             masking_type=MaskingType.PARTIAL,
             description="US phone format with parentheses",
