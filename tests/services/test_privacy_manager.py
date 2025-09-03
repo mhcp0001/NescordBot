@@ -58,64 +58,102 @@ class MockDatabaseService:
         }
 
     def get_connection(self):
-        """Return a mock connection."""
-        return MockConnection(self)
+        """Return a mock connection context manager."""
+        # Ensure we return the MockConnection instance directly
+        # as it implements __aenter__ and __aexit__
+        conn = MockConnection(self)
+        self.connections.append(conn)
+        return conn
 
 
 class MockConnection:
-    """Mock database connection."""
+    """Mock database connection with enhanced async context manager support."""
 
     def __init__(self, db_service):
         self.db_service = db_service
         self.committed = False
+        self._closed = False
 
     async def __aenter__(self):
+        """Async context manager entry."""
+        # Ensure connection is ready for async operations
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        """Async context manager exit."""
+        # Cleanup and close connection
+        self._closed = True
+        return False  # Don't suppress exceptions
 
     async def execute(self, query, params=None):
-        """Execute a query."""
+        """Execute a query and return cursor."""
+        if self._closed:
+            raise RuntimeError("Connection is closed")
+
+        # Track all queries for debugging
         self.db_service.queries.append((query, params))
 
-        # Mock responses for different queries
+        # Mock responses for different queries with proper data
         if "CREATE TABLE" in query:
             return MockCursor([])
         elif "SELECT" in query and "privacy_rules" in query:
-            return MockCursor([])  # Empty rules by default
+            # Return empty rules by default - custom rules added via add_custom_rule
+            return MockCursor([])
+        elif "INSERT INTO privacy_rules" in query:
+            # Mock successful insert
+            return MockCursor([])
         elif "DELETE" in query and "security_events" in query:
+            return MockCursor([])
+        elif "INSERT INTO security_events" in query:
             return MockCursor([])
         else:
             return MockCursor([])
 
     async def commit(self):
         """Commit transaction."""
+        if self._closed:
+            raise RuntimeError("Connection is closed")
         self.committed = True
+
+    def __repr__(self):
+        return f"MockConnection(closed={self._closed}, committed={self.committed})"
 
 
 class MockCursor:
-    """Mock database cursor."""
+    """Mock database cursor with enhanced async support."""
 
     def __init__(self, rows):
-        self.rows = rows
+        self.rows = rows if rows is not None else []
         self.index = 0
+        self._closed = False
 
     async def __aenter__(self):
+        """Async context manager entry."""
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
+        """Async context manager exit."""
+        self._closed = True
+        return False
 
     async def fetchall(self):
-        return self.rows
+        """Fetch all remaining rows."""
+        if self._closed:
+            raise RuntimeError("Cursor is closed")
+        return self.rows.copy()
 
     async def fetchone(self):
+        """Fetch one row."""
+        if self._closed:
+            raise RuntimeError("Cursor is closed")
         if self.index < len(self.rows):
             row = self.rows[self.index]
             self.index += 1
             return row
         return None
+
+    def __repr__(self):
+        return f"MockCursor(rows={len(self.rows)}, index={self.index}, closed={self._closed})"
 
 
 # Test classes following AlertManager pattern
@@ -570,7 +608,10 @@ class TestPrivacyManagerIntegration:
     @pytest.mark.asyncio
     async def test_custom_rules_with_detection(self, privacy_manager):
         """Test custom rules integration with detection."""
-        # Add custom rule
+        # Store initial rule count
+        initial_rule_count = len(privacy_manager._privacy_rules)
+
+        # Add custom rule with debugging
         rule_id = await privacy_manager.add_custom_rule(
             name="Custom Phone Pattern",
             pattern=r"\b\(\d{3}\)\s\d{3}-\d{4}\b",
@@ -579,20 +620,39 @@ class TestPrivacyManagerIntegration:
             description="US phone format with parentheses",
         )
 
-        # Verify rule was added to manager
-        assert rule_id in privacy_manager._privacy_rules
+        # Verify rule was actually added to internal dictionary
+        assert rule_id is not None, "Rule ID should not be None"
+        assert (
+            rule_id in privacy_manager._privacy_rules
+        ), f"Rule {rule_id} not found in _privacy_rules"
+        assert (
+            len(privacy_manager._privacy_rules) > initial_rule_count
+        ), "Rule count should have increased"
+
+        # Get the added rule and verify its properties
+        added_rule = privacy_manager._privacy_rules[rule_id]
+        assert added_rule.name == "Custom Phone Pattern"
+        assert added_rule.pattern == r"\b\(\d{3}\)\s\d{3}-\d{4}\b"
 
         # Test detection with custom rule
         text = "Call me at (555) 123-4567 tomorrow"
         detected = await privacy_manager.detect_pii(text)
 
-        # Should detect with custom rule - check rule exists first
-        if rule_id in privacy_manager._privacy_rules:
-            custom_detected = [d for d in detected if d[0].id == rule_id]
-            assert len(custom_detected) > 0
-        else:
-            # Fallback check - at least verify a rule was added
-            assert len(privacy_manager._privacy_rules) > 8  # More than default built-ins
+        # Debug: Print detected rules for CI troubleshooting
+        detected_rule_ids = [d[0].id for d in detected]
+
+        # Should detect with custom rule
+        custom_detected = [d for d in detected if d[0].id == rule_id]
+        assert (
+            len(custom_detected) > 0
+        ), f"Custom rule {rule_id} not detected. Found rules: {detected_rule_ids}"
+
+        # Verify the match content
+        rule, matches = custom_detected[0]
+        assert len(matches) > 0, "Should have at least one match"
+        assert (
+            "(555) 123-4567" in matches[0]
+        ), f"Expected phone number not found in matches: {matches}"
 
     @pytest.mark.asyncio
     async def test_performance_with_large_text(self, privacy_manager):
