@@ -67,7 +67,7 @@ class MockDatabaseService:
 
 
 class MockConnection:
-    """Mock database connection with enhanced async context manager support."""
+    """Mock database connection following AlertManager pattern."""
 
     def __init__(self, db_service):
         self.db_service = db_service
@@ -76,38 +76,58 @@ class MockConnection:
 
     async def __aenter__(self):
         """Async context manager entry."""
-        # Ensure connection is ready for async operations
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
-        # Cleanup and close connection
         self._closed = True
-        return False  # Don't suppress exceptions
+        return False
 
     async def execute(self, query, params=None):
-        """Execute a query and return cursor (synchronous method)."""
+        """Execute a query and return async cursor."""
         if self._closed:
             raise RuntimeError("Connection is closed")
 
         # Track all queries for debugging
         self.db_service.queries.append((query, params))
 
-        # Mock responses for different queries with proper data
-        if "CREATE TABLE" in query:
-            return MockCursor([])
-        elif "SELECT" in query and "privacy_rules" in query:
-            # Return empty rules by default - custom rules added via add_custom_rule
-            return MockCursor([])
+        # For CREATE TABLE and other DDL, return awaitable
+        if "CREATE TABLE" in query or "DROP TABLE" in query or "ALTER TABLE" in query:
+            # Return an awaitable for DDL operations
+            class AwaitableMock:
+                async def __aenter__(self):
+                    return None
+
+                async def __aexit__(self, *args):
+                    return None
+
+            return AwaitableMock()
+
+        # Create cursor with appropriate data for SELECT/INSERT
+        cursor_data = []
+
+        if "SELECT" in query and "privacy_rules" in query:
+            # For initialization: return empty (no existing custom rules)
+            # For runtime queries after add_custom_rule: return the rule data
+            if hasattr(self.db_service, "_custom_rules_data"):
+                cursor_data = self.db_service._custom_rules_data
         elif "INSERT INTO privacy_rules" in query:
-            # Mock successful insert
-            return MockCursor([])
-        elif "DELETE" in query and "security_events" in query:
-            return MockCursor([])
-        elif "INSERT INTO security_events" in query:
-            return MockCursor([])
-        else:
-            return MockCursor([])
+            # Store the inserted rule for future SELECT queries
+            if params and len(params) >= 7:
+                rule_data = (
+                    params[0],
+                    params[1],
+                    params[2],
+                    params[3],
+                    params[4],
+                    params[5],
+                    params[6],
+                )
+                if not hasattr(self.db_service, "_custom_rules_data"):
+                    self.db_service._custom_rules_data = []
+                self.db_service._custom_rules_data.append(rule_data)
+
+        return MockCursor(cursor_data)
 
     async def commit(self):
         """Commit transaction."""
@@ -115,16 +135,12 @@ class MockConnection:
             raise RuntimeError("Connection is closed")
         self.committed = True
 
-    def __repr__(self):
-        return f"MockConnection(closed={self._closed}, committed={self.committed})"
-
 
 class MockCursor:
-    """Mock database cursor with enhanced async support."""
+    """Mock database cursor with async context manager support."""
 
     def __init__(self, rows):
         self.rows = rows if rows is not None else []
-        self.index = 0
         self._closed = False
 
     async def __aenter__(self):
@@ -146,14 +162,9 @@ class MockCursor:
         """Fetch one row."""
         if self._closed:
             raise RuntimeError("Cursor is closed")
-        if self.index < len(self.rows):
-            row = self.rows[self.index]
-            self.index += 1
-            return row
+        if self.rows:
+            return self.rows[0]
         return None
-
-    def __repr__(self):
-        return f"MockCursor(rows={len(self.rows)}, index={self.index}, closed={self._closed})"
 
 
 # Test classes following AlertManager pattern
@@ -490,7 +501,41 @@ class TestPrivacyManagerIntegration:
 
     @pytest.fixture
     def mock_database(self):
-        return MockDatabaseService()
+        """Create a mock database service following AlertManager pattern."""
+        from unittest.mock import AsyncMock, Mock
+
+        from src.nescordbot.services.database import DatabaseService
+
+        db_service = Mock(spec=DatabaseService)
+
+        # Mock database connection
+        mock_connection = AsyncMock()
+        mock_cursor = AsyncMock()
+
+        # Storage for custom rules data
+        custom_rules_data: list[tuple] = []
+
+        mock_cursor.fetchall = AsyncMock(return_value=custom_rules_data)
+        mock_cursor.fetchone = AsyncMock(return_value=None)
+
+        # Track execute calls to store custom rules
+        async def execute_side_effect(query, params=None):
+            if "INSERT INTO privacy_rules" in query and params and len(params) >= 7:
+                # Store the inserted rule for future SELECT queries
+                rule_data = params[:7]  # First 7 parameters are the rule data
+                custom_rules_data.append(rule_data)
+                # Update fetchall to return the new data
+                mock_cursor.fetchall = AsyncMock(return_value=custom_rules_data.copy())
+            return mock_cursor
+
+        mock_connection.execute = AsyncMock(side_effect=execute_side_effect)
+        mock_connection.commit = AsyncMock()
+        mock_connection.__aenter__ = AsyncMock(return_value=mock_connection)
+        mock_connection.__aexit__ = AsyncMock(return_value=None)
+
+        db_service.get_connection = Mock(return_value=mock_connection)
+
+        return db_service
 
     @pytest.fixture
     def mock_alert_manager(self):
@@ -632,7 +677,7 @@ class TestPrivacyManagerIntegration:
         # Add custom rule with debugging
         rule_id = await privacy_manager.add_custom_rule(
             name="Custom Phone Pattern",
-            pattern=r"\b\(\d{3}\)\s\d{3}-\d{4}\b",
+            pattern=r"\(\d{3}\)\s\d{3}-\d{4}",
             privacy_level=PrivacyLevel.MEDIUM,
             masking_type=MaskingType.PARTIAL,
             description="US phone format with parentheses",
@@ -650,20 +695,17 @@ class TestPrivacyManagerIntegration:
         # Get the added rule and verify its properties
         added_rule = privacy_manager._privacy_rules[rule_id]
         assert added_rule.name == "Custom Phone Pattern"
-        assert added_rule.pattern == r"\b\(\d{3}\)\s\d{3}-\d{4}\b"
+        assert added_rule.pattern == r"\(\d{3}\)\s\d{3}-\d{4}"
 
         # Test detection with custom rule
         text = "Call me at (555) 123-4567 tomorrow"
         detected = await privacy_manager.detect_pii(text)
 
-        # Debug: Print detected rules for CI troubleshooting
-        detected_rule_ids = [d[0].id for d in detected]
-
         # Should detect with custom rule
         custom_detected = [d for d in detected if d[0].id == rule_id]
         assert (
             len(custom_detected) > 0
-        ), f"Custom rule {rule_id} not detected. Found rules: {detected_rule_ids}"
+        ), f"Custom rule {rule_id} not detected. Found {len(detected)} total detections"
 
         # Verify the match content
         rule, matches = custom_detected[0]

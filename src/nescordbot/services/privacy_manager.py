@@ -261,27 +261,15 @@ class PrivacyManager:
     async def _load_custom_rules(self) -> None:
         """Load custom privacy rules from database."""
         try:
-            # Handle both real and mock database connections
-            connection = self.db.get_connection()
-
-            # Check if this is a mock connection that can be used directly
-            if hasattr(connection, "__aenter__"):
-                # Direct async context manager usage (for both real and mock)
-                async with connection as conn:
-                    async with conn.execute(
-                        """
-                        SELECT id, name, pattern, privacy_level, masking_type, enabled,
-                               description FROM privacy_rules WHERE enabled = 1
-                        """,
-                        (),  # Empty parameters tuple - this is crucial!
-                    ) as cursor:
-                        rows = await cursor.fetchall()
-            else:
-                # Fallback: connection might be a coroutine in some test scenarios
-                self._logger.warning(
-                    "Database connection returned unexpected type, skipping custom rule loading"
-                )
-                rows = []
+            async with self.db.get_connection() as conn:
+                async with conn.execute(
+                    """
+                    SELECT id, name, pattern, privacy_level, masking_type, enabled,
+                           description FROM privacy_rules WHERE enabled = 1
+                    """,
+                    (),
+                ) as cursor:
+                    rows = await cursor.fetchall()
 
             for row in rows:
                 rule = PrivacyRule(
@@ -295,11 +283,17 @@ class PrivacyManager:
                 )
                 self._privacy_rules[rule.id] = rule
 
-            self._logger.debug(f"Loaded {len(rows)} custom privacy rules")
+            if rows:
+                self._logger.info(f"Loaded {len(rows)} custom privacy rules from database")
+            else:
+                self._logger.debug("No custom privacy rules found in database")
 
         except Exception as e:
             # In test environments, database errors should not prevent initialization
             self._logger.error(f"Failed to load custom privacy rules: {e}")
+            import traceback
+
+            self._logger.debug(f"Custom rules loading traceback: {traceback.format_exc()}")
             # Continue initialization even if custom rules loading fails
 
     async def _cleanup_old_events(self) -> None:
@@ -623,7 +617,8 @@ class PrivacyManager:
             # Add to runtime rules
             self._privacy_rules[rule_id] = rule
 
-            self._logger.info(f"Added custom privacy rule: {name}")
+            self._logger.info(f"Added custom privacy rule: {name} (ID: {rule_id})")
+            self._logger.debug(f"Total privacy rules after addition: {len(self._privacy_rules)}")
             return rule_id
 
         except re.error as e:
