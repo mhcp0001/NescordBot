@@ -678,6 +678,9 @@ class AdminCog(commands.Cog):
     async def stats(self, interaction: discord.Interaction):
         """Display system metrics and performance statistics."""
         if not await self._check_admin_permissions(interaction):
+            await interaction.response.send_message(
+                "❌ この機能を使用する権限がありません。管理者権限が必要です。", ephemeral=True
+            )
             return
 
         await interaction.response.defer()
