@@ -21,6 +21,15 @@ from .note_processing import NoteProcessingService
 from .obsidian_github import ObsidianGitHubService, ObsidianSyncStatus
 from .persistent_queue import FileRequest, PersistentQueue
 from .phase4_monitor import Phase4Monitor, Phase4MonitorError
+from .privacy_manager import (
+    MaskingType,
+    PrivacyLevel,
+    PrivacyManager,
+    PrivacyManagerError,
+    PrivacyRule,
+    SecurityEvent,
+    SecurityEventType,
+)
 from .search_engine import (
     SearchEngine,
     SearchEngineError,
@@ -111,4 +120,11 @@ __all__ = [
     "APIMonitorError",
     "Phase4Monitor",
     "Phase4MonitorError",
+    "MaskingType",
+    "PrivacyLevel",
+    "PrivacyManager",
+    "PrivacyManagerError",
+    "PrivacyRule",
+    "SecurityEvent",
+    "SecurityEventType",
 ]

@@ -30,6 +30,7 @@ from .services import (
     NoteProcessingService,
     ObsidianGitHubService,
     Phase4Monitor,
+    PrivacyManager,
     SearchEngine,
     SyncManager,
     TokenManager,
@@ -572,10 +573,22 @@ class NescordBot(commands.Bot):
 
             self.service_container.register_factory(AlertManager, create_alert_manager)
 
+            # PrivacyManager factory (depends on AlertManager)
+            def create_privacy_manager() -> PrivacyManager:
+                alert_manager = self.service_container.get_service(AlertManager)
+                return PrivacyManager(
+                    config=self.config,
+                    bot=self,
+                    database_service=self.database_service,
+                    alert_manager=alert_manager,
+                )
+
+            self.service_container.register_factory(PrivacyManager, create_privacy_manager)
+
             self.logger.info(
                 "ServiceContainer initialized with EmbeddingService, ChromaDBService, "
                 "TokenManager, SyncManager, KnowledgeManager, SearchEngine, FallbackManager, "
-                "APIMonitor, Phase4Monitor, and AlertManager"
+                "APIMonitor, Phase4Monitor, AlertManager, and PrivacyManager"
             )
 
         except Exception as e:
