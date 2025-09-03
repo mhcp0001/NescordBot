@@ -29,7 +29,12 @@ class MockConfig(BotConfig):
 
     def __init__(self, **kwargs: Any):
         # Initialize with minimal required fields for BotConfig
-        super().__init__(discord_token="mock_token", openai_api_key="mock_key", **kwargs)
+        # Use valid format for Discord token and OpenAI API key
+        super().__init__(
+            discord_token="Bot MTAzOTQ2ODIzNzQ5MDM5MTEyMQ.GGhBOX.mock_testing_token",
+            openai_api_key="sk-proj-mock_openai_key_for_testing_only_12345678",
+            **kwargs,
+        )
 
 
 class MockBot:
