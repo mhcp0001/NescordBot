@@ -86,7 +86,7 @@ class MockConnection:
         return False  # Don't suppress exceptions
 
     async def execute(self, query, params=None):
-        """Execute a query and return cursor."""
+        """Execute a query and return cursor (synchronous method)."""
         if self._closed:
             raise RuntimeError("Connection is closed")
 
@@ -506,7 +506,25 @@ class TestPrivacyManagerIntegration:
             database_service=mock_database,
             alert_manager=mock_alert_manager,
         )
+
+        # Override database connection for reliable testing
+        original_get_connection = mock_database.get_connection
+
+        def get_mock_connection():
+            conn = original_get_connection()
+            # Ensure the connection is ready for async context manager use
+            return conn
+
+        mock_database.get_connection = get_mock_connection
+
         await manager.initialize()
+
+        # Verify initialization succeeded and rules are loaded
+        assert manager._initialized, "PrivacyManager should be initialized"
+        assert (
+            len(manager._privacy_rules) > 0
+        ), f"Expected built-in rules, got {len(manager._privacy_rules)}"
+
         return manager
 
     @pytest.mark.asyncio
