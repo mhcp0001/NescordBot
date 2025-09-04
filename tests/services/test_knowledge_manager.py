@@ -453,6 +453,154 @@ class TestKnowledgeManager:
         await knowledge_manager.close()
         assert knowledge_manager._initialized is False
 
+    @pytest.mark.asyncio
+    async def test_update_note_with_history_tracking(self, knowledge_manager):
+        """Test update note with history tracking."""
+        # Create initial note
+        note_id = await knowledge_manager.create_note(
+            title="Original Title", content="Original content", user_id="user123"
+        )
+
+        # Update note with history tracking
+        success = await knowledge_manager.update_note(
+            note_id=note_id,
+            title="Updated Title",
+            content="Updated content",
+            tags=["updated", "test"],
+            user_id="user123",
+        )
+
+        assert success
+
+        # Get history
+        history = await knowledge_manager.get_note_history(note_id)
+        assert len(history) == 1
+
+        history_item = history[0]
+        assert history_item["user_id"] == "user123"
+        assert history_item["edit_type"] == "update"
+        assert history_item["title_before"] == "Original Title"
+        assert history_item["title_after"] == "Updated Title"
+        assert history_item["content_before"] == "Original content"
+        assert history_item["content_after"] == "Updated content"
+
+        # Check changes diff
+        changes = history_item["changes"]
+        assert "title" in changes
+        assert changes["title"]["changed"] is True
+        assert "content" in changes
+        assert changes["content"]["changed"] is True
+
+    @pytest.mark.asyncio
+    async def test_update_note_without_user_id_no_history(self, knowledge_manager):
+        """Test update note without user_id doesn't save history."""
+        # Create initial note
+        note_id = await knowledge_manager.create_note(
+            title="Test Title", content="Test content", user_id="user123"
+        )
+
+        # Update without user_id
+        success = await knowledge_manager.update_note(note_id=note_id, title="Updated Title")
+
+        assert success
+
+        # Check no history saved
+        history = await knowledge_manager.get_note_history(note_id)
+        assert len(history) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_note_history_empty(self, knowledge_manager):
+        """Test getting history for note with no edits."""
+        # Create note
+        note_id = await knowledge_manager.create_note(
+            title="Test Title", content="Test content", user_id="user123"
+        )
+
+        # Get history
+        history = await knowledge_manager.get_note_history(note_id)
+        assert len(history) == 0
+
+    @pytest.mark.asyncio
+    async def test_get_note_history_limit(self, knowledge_manager):
+        """Test history limit parameter."""
+        # Create note
+        note_id = await knowledge_manager.create_note(
+            title="Test Title", content="Test content", user_id="user123"
+        )
+
+        # Make multiple updates
+        for i in range(5):
+            await knowledge_manager.update_note(
+                note_id=note_id, title=f"Title {i}", user_id="user123"
+            )
+
+        # Get limited history
+        history = await knowledge_manager.get_note_history(note_id, limit=3)
+        assert len(history) == 3
+
+        # Should be ordered by timestamp desc (newest first)
+        assert history[0]["title_after"] == "Title 4"
+        assert history[1]["title_after"] == "Title 3"
+        assert history[2]["title_after"] == "Title 2"
+
+    def test_generate_edit_diff_title_change(self, knowledge_manager):
+        """Test diff generation for title changes."""
+        diff = knowledge_manager._generate_edit_diff(
+            title_before="Old Title",
+            content_before="Same content",
+            tags_before=["tag1"],
+            title_after="New Title",
+            content_after="Same content",
+            tags_after=["tag1"],
+        )
+
+        assert "title" in diff
+        assert diff["title"]["changed"] is True
+        assert diff["title"]["before"] == "Old Title"
+        assert diff["title"]["after"] == "New Title"
+        assert "content" not in diff
+        assert "tags" not in diff
+
+    def test_generate_edit_diff_content_change(self, knowledge_manager):
+        """Test diff generation for content changes."""
+        diff = knowledge_manager._generate_edit_diff(
+            title_before="Same Title",
+            content_before="Line 1\nLine 2",
+            tags_before=["tag1"],
+            title_after="Same Title",
+            content_after="Line 1\nLine 2 Modified\nLine 3",
+            tags_after=["tag1"],
+        )
+
+        assert "content" in diff
+        assert diff["content"]["changed"] is True
+        assert diff["content"]["before_lines"] == 2
+        assert diff["content"]["after_lines"] == 3
+        assert len(diff["content"]["diff"]) > 0
+
+    def test_generate_edit_diff_tags_change(self, knowledge_manager):
+        """Test diff generation for tags changes."""
+        diff = knowledge_manager._generate_edit_diff(
+            title_before="Same Title",
+            content_before="Same content",
+            tags_before=["tag1", "tag2"],
+            title_after="Same Title",
+            content_after="Same content",
+            tags_after=["tag1", "tag3", "tag4"],
+        )
+
+        assert "tags" in diff
+        assert diff["tags"]["changed"] is True
+        assert "tag2" in diff["tags"]["removed"]
+        assert "tag3" in diff["tags"]["added"]
+        assert "tag4" in diff["tags"]["added"]
+
+    @pytest.mark.asyncio
+    async def test_get_note_history_nonexistent_note(self, knowledge_manager):
+        """Test getting history for non-existent note."""
+        history = await knowledge_manager.get_note_history("nonexistent-id")
+        assert len(history) == 0
+
 
 class TestKnowledgeManagerIntegration:
     """Integration tests for KnowledgeManager with real components."""

@@ -21,7 +21,14 @@ from ..services import (
 )
 from ..services.search_engine import SearchMode
 from ..ui.pkm_embeds import PKMEmbed
-from ..ui.pkm_views import PKMHelpView, PKMListView, PKMNoteView, SearchResultView
+from ..ui.pkm_views import (
+    EditNoteModal,
+    EditNoteSelectionView,
+    PKMHelpView,
+    PKMListView,
+    PKMNoteView,
+    SearchResultView,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -852,14 +859,17 @@ class PKMCog(commands.Cog):
                 if suggestions:
                     embed = discord.Embed(
                         title=f"🏷️ タグ提案サンプル {i+1}",
-                        description=f"**ノート**: {note['title'][:50]}{'...' if len(note['title']) > 50 else ''}",
+                        description=f"**ノート**: {note['title'][:50]}"
+                        + ("..." if len(note["title"]) > 50 else ""),
                         color=0x00FF00,
                     )
 
                     for j, suggestion in enumerate(suggestions[:3]):
                         embed.add_field(
                             name=f"{j+1}. {suggestion['tag']}",
-                            value=f"信頼度: {suggestion['confidence']:.2f}\n{suggestion['reason'][:100]}{'...' if len(suggestion['reason']) > 100 else ''}",
+                            value=f"信頼度: {suggestion['confidence']:.2f}\n"
+                            + f"{suggestion['reason'][:100]}"
+                            + ("..." if len(suggestion["reason"]) > 100 else ""),
                             inline=False,
                         )
 
@@ -953,9 +963,12 @@ class PKMCog(commands.Cog):
 
         # プログレス表示用のメッセージ
         progress_embed = discord.Embed(
-            title="🔄 一括タグ付け実行中...", description="ノートを分析してタグを自動適用しています", color=0x0099FF
+            title="🔄 一括タグ付け実行中...",
+            description="ノートを分析してタグを自動適用しています",
+            color=0x0099FF,
         )
-        progress_message = await interaction.followup.send(embed=progress_embed)  # type: ignore[func-returns-value]
+        # type: ignore[func-returns-value]
+        progress_message = await interaction.followup.send(embed=progress_embed)
         # Note: Discord.py typing inconsistency - followup.send may return None
 
         # プログレスコールバック関数（同期関数として定義）
@@ -972,12 +985,15 @@ class PKMCog(commands.Cog):
 
         # 結果を報告
         result_embed = discord.Embed(
-            title="✅ 一括タグ付け完了", color=0x00FF00 if not results["errors"] else 0xFFA500
+            title="✅ 一括タグ付け完了",
+            color=0x00FF00 if not results["errors"] else 0xFFA500,
         )
 
         result_embed.add_field(
             name="📊 処理結果",
-            value=f"• 処理済み: {results['processed']} ノート\n• タグ付け済み: {results['categorized']} ノート\n• エラー: {len(results['errors'])} 件",
+            value=f"• 処理済み: {results['processed']} ノート\n"
+            f"• タグ付け済み: {results['categorized']} ノート\n"
+            f"• エラー: {len(results['errors'])} 件",
             inline=False,
         )
 
@@ -1028,7 +1044,7 @@ class PKMCog(commands.Cog):
         if not suggestions:
             embed = discord.Embed(
                 title="📝 タグ提案",
-                description=f"**ノート**: {note['title']}\n\n提案できるタグがありませんでした",
+                description=f"**ノート**: {note['title']}\n\n" "提案できるタグがありませんでした",
                 color=0x999999,
             )
             await interaction.followup.send(embed=embed)
@@ -1036,7 +1052,8 @@ class PKMCog(commands.Cog):
 
         embed = discord.Embed(
             title="🏷️ AIタグ提案",
-            description=f"**ノート**: {note['title'][:100]}{'...' if len(note['title']) > 100 else ''}",
+            description=f"**ノート**: {note['title'][:100]}"
+            + ("..." if len(note["title"]) > 100 else ""),
             color=0x0099FF,
         )
 
@@ -1057,7 +1074,9 @@ class PKMCog(commands.Cog):
             )
             embed.add_field(
                 name=f"{confidence_emoji} {i+1}. {suggestion['tag']}",
-                value=f"信頼度: {suggestion['confidence']:.2f}\n{suggestion['reason'][:150]}{'...' if len(suggestion['reason']) > 150 else ''}",
+                value=f"信頼度: {suggestion['confidence']:.2f}\n"
+                + f"{suggestion['reason'][:150]}"
+                + ("..." if len(suggestion["reason"]) > 150 else ""),
                 inline=False,
             )
 
@@ -1066,6 +1085,102 @@ class PKMCog(commands.Cog):
         )
 
         await interaction.followup.send(embed=embed)
+
+    # Edit command
+    @pkm_group.command(name="edit", description="既存のノートを編集します")
+    @app_commands.describe(note_id="編集するノートID（省略時は検索で選択）", query="ノート検索クエリ（ファジー検索）")
+    async def edit_command(
+        self,
+        interaction: discord.Interaction,
+        note_id: Optional[str] = None,
+        query: Optional[str] = None,
+    ) -> None:
+        """Edit an existing note with interactive selection."""
+        if not await self._check_services(interaction):
+            return
+
+        await interaction.response.defer()
+        user_id = str(interaction.user.id)
+
+        try:
+            target_note = None
+
+            if note_id:
+                # Direct note ID specified
+                assert self.knowledge_manager is not None
+                target_note = await self.knowledge_manager.get_note(note_id)
+
+                if not target_note:
+                    embed = PKMEmbed.error("ノートが見つかりません", f"ID `{note_id}` のノートは存在しません。")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+
+                # Check ownership
+                if target_note.get("user_id") != user_id:
+                    embed = PKMEmbed.error("権限エラー", "他のユーザーのノートは編集できません。")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+
+                # Show edit modal
+                modal = EditNoteModal(target_note, self.knowledge_manager)
+                await interaction.followup.send("編集フォームを表示します...", ephemeral=True)
+                await interaction.edit_original_response(content="編集フォームを開いてください。")
+                await modal.send_modal(interaction)
+
+            elif query:
+                # Search and select
+                assert self.search_engine is not None
+                filters = SearchFilters(user_id=user_id, min_score=0.3)
+
+                search_results = await asyncio.wait_for(
+                    self.search_engine.hybrid_search(
+                        query=query, mode=SearchMode.HYBRID, limit=10, filters=filters
+                    ),
+                    timeout=COMMAND_TIMEOUT,
+                )
+
+                if not search_results:
+                    embed = PKMEmbed.error("検索結果なし", "該当するノートが見つかりませんでした。検索クエリを変更してください。")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+
+                # Show selection dropdown
+                assert self.knowledge_manager is not None
+                view = EditNoteSelectionView(search_results, self.knowledge_manager, user_id)
+                embed = PKMEmbed.success(
+                    "編集するノートを選択", f"検索結果: {len(search_results)}件\n下のドロップダウンから編集するノートを選択してください。"
+                )
+                await interaction.followup.send(embed=embed, view=view)
+
+            else:
+                # Show recent notes for selection
+                assert self.knowledge_manager is not None
+                recent_notes = await self.knowledge_manager.list_notes(
+                    user_id=user_id, limit=10, offset=0
+                )
+
+                if not recent_notes:
+                    embed = PKMEmbed.error("ノートがありません", "編集できるノートがありません。まずノートを作成してください。")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+
+                # Show selection dropdown
+                view = EditNoteSelectionView(
+                    recent_notes, self.knowledge_manager, user_id, is_recent=True
+                )
+                embed = PKMEmbed.success(
+                    "最近のノートから編集", f"最近のノート: {len(recent_notes)}件\n下のドロップダウンから編集するノートを選択してください。"
+                )
+                await interaction.followup.send(embed=embed, view=view)
+
+        except asyncio.TimeoutError:
+            embed = PKMEmbed.error("処理がタイムアウトしました", "検索処理に時間がかかりすぎました。")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Error in edit command: {e}")
+            embed = PKMEmbed.error("エラーが発生しました", "ノート編集処理中にエラーが発生しました。")
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 class NoteMergeView(discord.ui.View):

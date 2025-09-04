@@ -4,6 +4,7 @@ import logging
 from typing import Any, Callable, Dict, List, Optional
 
 import discord
+from typing_extensions import Self
 
 from ..services.knowledge_manager import KnowledgeManager
 from ..services.search_engine import SearchResult
@@ -423,3 +424,401 @@ class PKMHelpView(discord.ui.View):
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class EditNoteModal(discord.ui.Modal):
+    """Modal for editing existing notes."""
+
+    def __init__(self, note_data: Dict[str, Any], knowledge_manager: "KnowledgeManager"):
+        super().__init__(title="ノートを編集")
+        self.note_data = note_data
+        self.km = knowledge_manager
+
+        # Title input
+        self.title_input: discord.ui.TextInput[Self] = discord.ui.TextInput(
+            label="タイトル",
+            default=note_data.get("title", ""),
+            max_length=100,
+            required=True,
+        )
+        self.add_item(self.title_input)
+
+        # Content input
+        content = note_data.get("content", "")
+        self.content_input: discord.ui.TextInput[Self] = discord.ui.TextInput(
+            label="内容",
+            style=discord.TextStyle.paragraph,
+            default=content,
+            max_length=4000,
+            required=True,
+        )
+        self.add_item(self.content_input)
+
+        # Tags input
+        tags = note_data.get("tags", [])
+        tags_str = ", ".join(tags) if isinstance(tags, list) else str(tags)
+        self.tags_input: discord.ui.TextInput[Self] = discord.ui.TextInput(
+            label="タグ（カンマ区切り）",
+            default=tags_str,
+            max_length=200,
+            required=False,
+        )
+        self.add_item(self.tags_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        """Handle modal submission."""
+        await interaction.response.defer()
+
+        try:
+            # Parse tags
+            tags_list = []
+            if self.tags_input.value.strip():
+                tags_list = [tag.strip() for tag in self.tags_input.value.split(",") if tag.strip()]
+
+            # Update note with user ID for history tracking
+            success = await self.km.update_note(
+                note_id=self.note_data["id"],
+                title=self.title_input.value,
+                content=self.content_input.value,
+                tags=tags_list,
+                user_id=str(interaction.user.id),
+            )
+
+            if success:
+                embed = PKMEmbed.success("ノートを更新しました", f"ID: {self.note_data['id']}")
+                embed.add_field(name="新しいタイトル", value=self.title_input.value, inline=False)
+                if tags_list:
+                    embed.add_field(name="タグ", value=", ".join(tags_list), inline=False)
+
+                # Add view with history button
+                view = EditNoteResultView(self.note_data["id"], self.km)
+                await interaction.followup.send(embed=embed, view=view)
+                logger.info(f"Note updated: {self.note_data['id']} by user {interaction.user.id}")
+            else:
+                embed = PKMEmbed.error("更新に失敗しました", "ノートの更新中にエラーが発生しました。")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Error updating note: {e}")
+            embed = PKMEmbed.error("エラーが発生しました", "ノートの更新中にエラーが発生しました。")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def send_modal(self, interaction: discord.Interaction):
+        """Send the modal to the user."""
+        await interaction.response.send_modal(self)
+
+
+class EditNoteSelectionView(discord.ui.View):
+    """View for selecting notes to edit."""
+
+    def __init__(
+        self,
+        notes: List[Any],
+        knowledge_manager: "KnowledgeManager",
+        user_id: str,
+        is_recent: bool = False,
+    ):
+        super().__init__(timeout=300)
+        self.notes = notes
+        self.km = knowledge_manager
+        self.user_id = user_id
+        self.is_recent = is_recent
+
+        # Create dropdown
+        options = []
+        for i, note in enumerate(notes[:25]):  # Discord limit
+            if self.is_recent:
+                # For list_notes result format
+                title = note.get("title", "無題")[:50]
+                note_id = note.get("id", "")
+                content_preview = note.get("content", "")[:50]
+            else:
+                # For search results format
+                title = note.title[:50] if hasattr(note, "title") else "無題"
+                note_id = note.id if hasattr(note, "id") else ""
+                content_preview = note.content[:50] if hasattr(note, "content") else ""
+
+            description = f"ID: {note_id} | {content_preview}..."
+
+            options.append(
+                discord.SelectOption(
+                    label=title, description=description[:100], value=str(i)  # Discord limit
+                )
+            )
+
+        self.note_select: discord.ui.Select[Self] = discord.ui.Select(
+            placeholder="編集するノートを選択してください", options=options, row=0
+        )
+        self.note_select.callback = self.select_note  # type: ignore
+        self.add_item(self.note_select)
+
+    async def select_note(self, interaction: discord.Interaction):
+        """Handle note selection."""
+        try:
+            selected_idx = int(self.note_select.values[0])
+            selected_note = self.notes[selected_idx]
+
+            # Convert to standard format if needed
+            if self.is_recent:
+                note_data = selected_note
+            else:
+                # Convert SearchResult to dict format
+                note_data = {
+                    "id": selected_note.id if hasattr(selected_note, "id") else "",
+                    "title": selected_note.title if hasattr(selected_note, "title") else "",
+                    "content": selected_note.content if hasattr(selected_note, "content") else "",
+                    "tags": selected_note.tags if hasattr(selected_note, "tags") else [],
+                    "user_id": self.user_id,
+                }
+
+            # Check ownership
+            if note_data.get("user_id") != self.user_id:
+                embed = PKMEmbed.error("権限エラー", "他のユーザーのノートは編集できません。")
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+
+            # Show edit modal
+            modal = EditNoteModal(note_data, self.km)
+            await modal.send_modal(interaction)
+
+        except (ValueError, IndexError) as e:
+            logger.error(f"Error in note selection: {e}")
+            embed = PKMEmbed.error("選択エラー", "ノートの選択中にエラーが発生しました。")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class EditNoteResultView(discord.ui.View):
+    """View displayed after successful note edit with history button."""
+
+    def __init__(self, note_id: str, knowledge_manager: "KnowledgeManager"):
+        super().__init__(timeout=300)
+        self.note_id = note_id
+        self.km = knowledge_manager
+
+    @discord.ui.button(label="編集履歴を表示", style=discord.ButtonStyle.secondary, emoji="📜")
+    async def show_history(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show note edit history."""
+        await interaction.response.defer()
+
+        try:
+            history = await self.km.get_note_history(self.note_id, limit=10)
+
+            if not history:
+                embed = PKMEmbed.info("編集履歴なし", "このノートに編集履歴がありません。")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            # Create history view
+            view = NoteHistoryView(self.note_id, history, self.km)
+            embed = await self._create_history_embed(history[0] if history else None)
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Error getting note history: {e}")
+            embed = PKMEmbed.error("エラー", "履歴の取得中にエラーが発生しました。")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _create_history_embed(
+        self, history_item: Optional[Dict[str, Any]] = None
+    ) -> discord.Embed:
+        """Create embed for history display."""
+        if not history_item:
+            return PKMEmbed.info("編集履歴", "履歴がありません。")
+
+        embed = discord.Embed(
+            title="📜 ノート編集履歴",
+            description=f"ノートID: `{self.note_id}`",
+            color=discord.Color.blue(),
+        )
+
+        # Add latest edit info
+        embed.add_field(
+            name="最新の編集",
+            value=f"<@{history_item['user_id']}> - {history_item['timestamp']}",
+            inline=False,
+        )
+
+        # Add changes summary
+        changes = history_item.get("changes", {})
+        if changes:
+            change_summary = []
+            if "title" in changes:
+                change_summary.append("🏷️ タイトル変更")
+            if "content" in changes:
+                change_summary.append("📝 内容変更")
+            if "tags" in changes:
+                change_summary.append("🏷️ タグ変更")
+
+            embed.add_field(
+                name="変更内容",
+                value="\n".join(change_summary) if change_summary else "変更なし",
+                inline=False,
+            )
+
+        return embed
+
+
+class NoteHistoryView(discord.ui.View):
+    """View for navigating through note history."""
+
+    def __init__(
+        self, note_id: str, history: List[Dict[str, Any]], knowledge_manager: "KnowledgeManager"
+    ):
+        super().__init__(timeout=300)
+        self.note_id = note_id
+        self.history = history
+        self.km = knowledge_manager
+        self.current_index = 0
+
+        # Update button states
+        self._update_buttons()
+
+    def _update_buttons(self):
+        """Update button enabled states based on current position."""
+        self.prev_button.disabled = self.current_index == 0
+        self.next_button.disabled = self.current_index >= len(self.history) - 1
+
+    @discord.ui.button(label="◀️ 前の編集", style=discord.ButtonStyle.secondary, disabled=True)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show previous edit in history."""
+        if self.current_index > 0:
+            self.current_index -= 1
+            self._update_buttons()
+            embed = await self._create_history_detail_embed(self.history[self.current_index])
+            await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="次の編集 ▶️", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show next edit in history."""
+        if self.current_index < len(self.history) - 1:
+            self.current_index += 1
+            self._update_buttons()
+            embed = await self._create_history_detail_embed(self.history[self.current_index])
+            await interaction.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="差分表示", style=discord.ButtonStyle.primary, emoji="🔍")
+    async def show_diff(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show detailed diff for current history item."""
+        history_item = self.history[self.current_index]
+        modal = NoteDiffModal(history_item)
+        await interaction.response.send_modal(modal)
+
+    async def _create_history_detail_embed(self, history_item: Dict[str, Any]) -> discord.Embed:
+        """Create detailed embed for a specific history item."""
+        embed = discord.Embed(
+            title=f"📜 編集履歴 ({self.current_index + 1}/{len(self.history)})",
+            description=f"ノートID: `{self.note_id}`",
+            color=discord.Color.blue(),
+        )
+
+        # Add edit info
+        embed.add_field(
+            name="編集者・日時",
+            value=f"<@{history_item['user_id']}>\n{history_item['timestamp']}",
+            inline=True,
+        )
+
+        embed.add_field(
+            name="編集タイプ",
+            value=history_item["edit_type"],
+            inline=True,
+        )
+
+        # Add changes details
+        changes = history_item.get("changes", {})
+
+        if "title" in changes:
+            title_change = changes["title"]
+            embed.add_field(
+                name="🏷️ タイトル変更",
+                value=f"**変更前:** {title_change['before']}\n**変更後:** {title_change['after']}",
+                inline=False,
+            )
+
+        if "content" in changes:
+            content_change = changes["content"]
+            embed.add_field(
+                name="📝 内容変更",
+                value=f"**変更前:** {content_change['before_lines']}行\n"
+                f"**変更後:** {content_change['after_lines']}行",
+                inline=True,
+            )
+
+        if "tags" in changes:
+            tags_change = changes["tags"]
+            added = ", ".join(tags_change["added"]) if tags_change["added"] else "なし"
+            removed = ", ".join(tags_change["removed"]) if tags_change["removed"] else "なし"
+
+            embed.add_field(
+                name="🏷️ タグ変更",
+                value=f"**追加:** {added}\n**削除:** {removed}",
+                inline=False,
+            )
+
+        return embed
+
+
+class NoteDiffModal(discord.ui.Modal):
+    """Modal for displaying detailed diff information."""
+
+    def __init__(self, history_item: Dict[str, Any]):
+        super().__init__(title="詳細な差分表示")
+        self.history_item = history_item
+
+        # Create diff text
+        changes = history_item.get("changes", {})
+        diff_text = self._create_diff_text(changes)
+
+        self.diff_display: discord.ui.TextInput[Self] = discord.ui.TextInput(
+            label="差分内容",
+            style=discord.TextStyle.paragraph,
+            default=diff_text[:4000],  # Discord limit
+            max_length=4000,
+            required=False,
+        )
+        self.add_item(self.diff_display)
+
+    def _create_diff_text(self, changes: Dict[str, Any]) -> str:
+        """Create formatted diff text."""
+        diff_lines = []
+
+        if "title" in changes:
+            title_change = changes["title"]
+            diff_lines.extend(
+                [
+                    "=== タイトル変更 ===",
+                    f"- {title_change['before']}",
+                    f"+ {title_change['after']}",
+                    "",
+                ]
+            )
+
+        if "content" in changes:
+            content_change = changes["content"]
+            diff_lines.extend(
+                [
+                    "=== 内容変更 ===",
+                ]
+            )
+            # Add first few lines of diff
+            diff_content = content_change.get("diff", [])
+            diff_lines.extend(diff_content[:30])  # Limit lines
+            if len(diff_content) > 30:
+                diff_lines.append("... (差分が長すぎるため省略)")
+            diff_lines.append("")
+
+        if "tags" in changes:
+            tags_change = changes["tags"]
+            diff_lines.extend(
+                [
+                    "=== タグ変更 ===",
+                    f"追加: {', '.join(tags_change['added']) if tags_change['added'] else 'なし'}",
+                    f"削除: {', '.join(tags_change['removed']) if tags_change['removed'] else 'なし'}",
+                ]
+            )
+
+        return "\n".join(diff_lines)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        """Handle modal submission (close modal)."""
+        await interaction.response.defer()

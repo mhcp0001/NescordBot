@@ -413,6 +413,67 @@ class CreateSearchHistoryMigration(Migration):
         await connection.execute("DROP TABLE IF EXISTS search_history")
 
 
+class CreateNoteHistoryMigration(Migration):
+    """Migration 007: Create note_history table."""
+
+    def __init__(self):
+        super().__init__(
+            version=7,
+            name="create_note_history",
+            description="Create note_history table for edit history tracking",
+        )
+
+    async def up(self, connection: aiosqlite.Connection) -> None:
+        """Create note_history table."""
+        await connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS note_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                note_id TEXT NOT NULL,
+                title_before TEXT,
+                content_before TEXT,
+                tags_before TEXT,
+                title_after TEXT,
+                content_after TEXT,
+                tags_after TEXT,
+                edit_type TEXT NOT NULL DEFAULT 'update',
+                user_id TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (note_id) REFERENCES knowledge_notes(id)
+            )
+        """
+        )
+
+        # Create indexes for efficient history queries
+        await connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_note_history_note_id
+            ON note_history(note_id)
+        """
+        )
+
+        await connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_note_history_timestamp
+            ON note_history(timestamp DESC)
+        """
+        )
+
+        await connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_note_history_user_id
+            ON note_history(user_id)
+        """
+        )
+
+    async def down(self, connection: aiosqlite.Connection) -> None:
+        """Drop note_history table."""
+        await connection.execute("DROP INDEX IF EXISTS idx_note_history_note_id")
+        await connection.execute("DROP INDEX IF EXISTS idx_note_history_timestamp")
+        await connection.execute("DROP INDEX IF EXISTS idx_note_history_user_id")
+        await connection.execute("DROP TABLE IF EXISTS note_history")
+
+
 class DatabaseMigrationManager:
     """
     Database migration management system.
@@ -444,6 +505,7 @@ class DatabaseMigrationManager:
             ExtendTranscriptionsMigration(),
             CreateFTS5IndexMigration(),
             CreateSearchHistoryMigration(),
+            CreateNoteHistoryMigration(),
         ]
 
         # Verify version sequence
