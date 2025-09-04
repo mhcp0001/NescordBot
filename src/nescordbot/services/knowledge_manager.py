@@ -371,7 +371,7 @@ class KnowledgeManager:
                            user_id, edit_type, timestamp
                     FROM note_history
                     WHERE note_id = ?
-                    ORDER BY timestamp DESC
+                    ORDER BY timestamp DESC, id DESC
                     LIMIT ?
                 """,
                     (note_id, limit),

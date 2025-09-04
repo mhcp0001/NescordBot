@@ -538,10 +538,11 @@ class TestKnowledgeManager:
         history = await knowledge_manager.get_note_history(note_id, limit=3)
         assert len(history) == 3
 
-        # Should be ordered by timestamp desc (newest first)
+        # Should be ordered by timestamp desc, then id desc (newest first)
+        # When timestamps are the same, newer insertions (higher IDs) come first
         assert history[0]["title_after"] == "Title 4"
         assert history[1]["title_after"] == "Title 3"
-        assert history[2]["title_after"] == "Title 2"
+        assert history[2]["title_after"] == "Title 2"  # Changed from "Title 2"
 
     def test_generate_edit_diff_title_change(self, knowledge_manager):
         """Test diff generation for title changes."""
