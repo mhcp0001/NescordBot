@@ -967,8 +967,9 @@ class PKMCog(commands.Cog):
             description="ノートを分析してタグを自動適用しています",
             color=0x0099FF,
         )
-        # type: ignore[func-returns-value]
-        progress_message = await interaction.followup.send(embed=progress_embed)
+        progress_message = await interaction.followup.send(
+            embed=progress_embed
+        )  # type: ignore[func-returns-value]
         # Note: Discord.py typing inconsistency - followup.send may return None
 
         # プログレスコールバック関数（同期関数として定義）
@@ -1140,7 +1141,7 @@ class PKMCog(commands.Cog):
                 )
 
                 if not search_results:
-                    embed = PKMEmbed.error("検索結果なし", "該当するノートが見つかりませんでした。検索クエリを変更してください。")
+                    embed = PKMEmbed.error("該当するノートが見つかりませんでした。検索クエリを変更してください。")
                     await interaction.followup.send(embed=embed, ephemeral=True)
                     return
 

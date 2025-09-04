@@ -505,17 +505,18 @@ class TestPKMCog:
             {"id": "note-1", "title": "Test Note 1", "content": "Content 1", "tags": []},
             {"id": "note-2", "title": "Test Note 2", "content": "Content 2", "tags": []},
         ]
-        mock_knowledge_manager.search_notes.return_value = search_results
+        mock_search_engine = pkm_cog.search_engine
+        mock_search_engine.hybrid_search.return_value = search_results
 
         # Execute
         await pkm_cog.edit_command.callback(pkm_cog, mock_interaction, query="test search")
 
         # Verify
-        mock_knowledge_manager.search_notes.assert_called_once_with("test search", limit=10)
-        mock_interaction.response.send_message.assert_called_once()
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called()
 
         # Check that selection view was sent
-        call_args = mock_interaction.response.send_message.call_args
+        call_args = mock_interaction.followup.send.call_args
         assert call_args[1]["view"] is not None
 
     @pytest.mark.asyncio
@@ -535,24 +536,27 @@ class TestPKMCog:
 
         # Verify
         mock_knowledge_manager.list_notes.assert_called_once_with(
-            user_id=str(mock_interaction.user.id), limit=10, sort_by="updated_at"
+            user_id=str(mock_interaction.user.id), limit=10, offset=0
         )
-        mock_interaction.response.send_message.assert_called_once()
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called()
 
     @pytest.mark.asyncio
     async def test_edit_command_no_results(self, pkm_cog, mock_interaction, mock_knowledge_manager):
         """Test edit command when no notes are found."""
         # Setup
-        mock_knowledge_manager.search_notes.return_value = []
+        mock_search_engine = pkm_cog.search_engine
+        mock_search_engine.hybrid_search.return_value = []
 
         # Execute
         await pkm_cog.edit_command.callback(pkm_cog, mock_interaction, query="no results")
 
         # Verify
-        mock_interaction.response.send_message.assert_called_once()
-        call_args = mock_interaction.response.send_message.call_args
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called()
+        call_args = mock_interaction.followup.send.call_args
         embed = call_args[1]["embed"]
-        assert "見つかりませんでした" in embed.description
+        assert "該当するノートが見つかりませんでした" in embed.description
 
 
 class TestPKMEmbeds:

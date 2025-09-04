@@ -27,8 +27,7 @@
       "Bash(gh run list:*)",
       "mcp__gemini-yusukedev",
       "Read",
-      "Read(/E:\\workspace\\NescordBot-1\\src\\nescordbot\\ui/**)",
-      "Read(/E:\\workspace\\NescordBot-1\\src\\nescordbot\\cogs/**)"
+      "Bash(gh run view:*)"
     ],
     "deny": [],
     "ask": []
