@@ -663,6 +663,31 @@ class AlertManager:
             "timestamp": datetime.now(),
         }
 
+    async def send_alert(self, alert: Alert) -> None:
+        """Send an alert (public API that wraps _trigger_alert)."""
+        # Create mock rule and metrics for _trigger_alert compatibility
+        from .alert_manager import AlertRule
+
+        async def mock_condition(metrics):
+            return True
+
+        mock_rule = AlertRule(
+            id=f"external_{alert.id}",
+            name=alert.title,
+            description=alert.message,
+            severity=alert.severity,
+            condition_func=mock_condition,
+            cooldown_minutes=0,
+        )
+
+        mock_metrics = {
+            "timestamp": alert.timestamp,
+            "external_alert": True,
+            "alert_metadata": alert.metadata,
+        }
+
+        await self._trigger_alert(mock_rule, mock_metrics)
+
     async def close(self) -> None:
         """Close AlertManager."""
         await self.stop_monitoring()
