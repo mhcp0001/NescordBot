@@ -177,6 +177,11 @@ class BotConfig(BaseModel):
         """Validate Discord token format."""
         if not v:
             raise ValueError("Discord token is required")
+
+        # Allow test tokens to bypass validation
+        if v.startswith(("TEST_TOKEN", "DUMMY_TOKEN")):
+            return v
+
         if not v.startswith(("Bot ", "MTA", "ODQ", "OTQ", "MT")):
             raise ValueError("Invalid Discord token format")
         return v

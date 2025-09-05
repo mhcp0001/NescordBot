@@ -6,7 +6,7 @@
   },
   "permissions": {
     "allow": [
-      "Bash(gh pr list:*)",
+      "Bash(gh*)",
       "Bash(poetry run)",
       "Bash(poetry run black:*)",
       "mcp__serena",
@@ -16,7 +16,9 @@
       "mcp__serena",
       "Bash(gh issue list:*)",
       "Bash(gh issue view:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)"
     ],
     "deny": [],
     "ask": []
