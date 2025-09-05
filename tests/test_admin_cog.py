@@ -416,3 +416,196 @@ class TestConfirmationView:
         assert view.confirmed is False
         assert confirm_button.disabled is True
         assert cancel_button.disabled is True
+
+
+class TestAdminCogStatsCommand:
+    """Test cases for /stats command in AdminCog."""
+
+    @pytest.fixture
+    def mock_bot(self):
+        """Create a mock bot with service container."""
+        bot = MagicMock()
+        bot.user = MagicMock()
+        bot.user.id = 123456789
+        bot.guilds = []
+        bot.data_dir = Path("data")
+
+        # Mock service container
+        bot.service_container = MagicMock()
+
+        # Mock database service for admin role checks
+        bot.database_service = AsyncMock()
+        bot.database_service.get_json = AsyncMock(return_value=None)
+
+        # Mock application_info for admin permission checks
+        app_info = MagicMock()
+        app_info.owner = MagicMock()
+        app_info.owner.id = 999999999  # Different from test user
+        bot.application_info = AsyncMock(return_value=app_info)
+
+        # Mock config
+        bot.config = MagicMock()
+        bot.config.max_audio_size_mb = 25
+        bot.config.speech_language = "ja-JP"
+        bot.config.log_level = "INFO"
+
+        return bot
+
+    @pytest.fixture
+    def admin_cog(self, mock_bot):
+        """Create AdminCog instance with mock bot."""
+        return AdminCog(mock_bot)
+
+    @pytest.fixture
+    def mock_interaction(self):
+        """Create a mock Discord interaction."""
+        interaction = AsyncMock()
+        interaction.response = AsyncMock()
+        interaction.followup = AsyncMock()
+        interaction.user = MagicMock(spec=discord.Member)
+        interaction.user.id = 987654321
+        interaction.guild = MagicMock()
+        interaction.user.guild_permissions = MagicMock()
+        interaction.user.guild_permissions.administrator = False
+        interaction.user.roles = []
+        return interaction
+
+    @pytest.mark.asyncio
+    async def test_stats_command_success(self, admin_cog, mock_interaction):
+        """Test /stats command successful execution."""
+        # Mock admin permissions
+        mock_interaction.user.guild_permissions.administrator = True
+
+        # Mock Phase4Monitor service
+        mock_phase4_monitor = AsyncMock()
+        mock_dashboard_data = {
+            "current": {
+                "timestamp": "2025-09-03T10:00:00",
+                "token_usage": {
+                    "monthly_usage": {
+                        "current_monthly_tokens": 5000,
+                        "monthly_limit": 50000,
+                        "monthly_usage_percentage": 10.0,
+                    }
+                },
+                "memory_usage": {
+                    "current_usage": {"current_mb": 150.0, "peak_mb": 200.0},
+                    "should_trigger_gc": False,
+                },
+                "pkm_performance": {
+                    "pkm_summary": {
+                        "search_engine": {
+                            "query_count": 25,
+                            "avg_query_time": 0.250,
+                            "avg_result_count": 8.5,
+                        },
+                        "knowledge_manager": {
+                            "operation_count": 15,
+                            "success_rate": 0.95,
+                            "avg_processing_time": 0.800,
+                        },
+                    }
+                },
+                "system_health": {
+                    "database": {"status": "healthy", "connection_test": True, "query_time": 0.005}
+                },
+            },
+            "api_status": {"monitoring_active": True, "fallback_level": "normal"},
+            "last_update": "2025-09-03T10:00:00",
+        }
+        mock_phase4_monitor.get_dashboard_data = AsyncMock(return_value=mock_dashboard_data)
+
+        # Mock service container
+        admin_cog.bot.service_container = MagicMock()
+        admin_cog.bot.service_container.get_service.return_value = mock_phase4_monitor
+
+        # Execute command
+        await admin_cog.stats.callback(admin_cog, mock_interaction)
+
+        # Verify Phase4Monitor was called
+        mock_phase4_monitor.get_dashboard_data.assert_called_once()
+
+        # Verify interaction responses
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called_once()
+
+        # Verify embed was sent with view
+        call_args = mock_interaction.followup.send.call_args
+        assert "embed" in call_args.kwargs
+        assert "view" in call_args.kwargs
+
+        embed = call_args.kwargs["embed"]
+        assert embed.title == "📊 システムメトリクス & パフォーマンス統計"
+
+    @pytest.mark.asyncio
+    async def test_stats_command_service_not_found(self, admin_cog, mock_interaction):
+        """Test /stats command when Phase4Monitor service is not found."""
+        from nescordbot.services import ServiceNotFoundError
+
+        # Mock admin permissions
+        mock_interaction.user.guild_permissions.administrator = True
+
+        # Mock service container throwing ServiceNotFoundError
+        admin_cog.bot.service_container = MagicMock()
+        admin_cog.bot.service_container.get_service.side_effect = ServiceNotFoundError(type)
+
+        # Execute command
+        await admin_cog.stats.callback(admin_cog, mock_interaction)
+
+        # Verify interaction responses
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called_once()
+
+        # Verify error embed was sent
+        call_args = mock_interaction.followup.send.call_args
+        assert "embed" in call_args.kwargs
+
+        embed = call_args.kwargs["embed"]
+        assert embed.title == "❌ システムメトリクス"
+        assert "Phase4Monitor サービスが利用できません" in embed.description
+
+    @pytest.mark.asyncio
+    async def test_stats_command_no_admin_permission(self, admin_cog, mock_interaction):
+        """Test /stats command without admin permissions."""
+        # Mock non-admin user
+        mock_interaction.user.guild_permissions.administrator = False
+        mock_interaction.user.roles = []
+
+        # Execute command
+        await admin_cog.stats.callback(admin_cog, mock_interaction)
+
+        # Should return early due to permission check
+        mock_interaction.response.send_message.assert_called_once()
+
+        # Verify error message
+        call_args = mock_interaction.response.send_message.call_args
+        assert call_args.kwargs.get("ephemeral") is True
+
+    @pytest.mark.asyncio
+    async def test_stats_command_dashboard_error(self, admin_cog, mock_interaction):
+        """Test /stats command when dashboard data collection fails."""
+        # Mock admin permissions
+        mock_interaction.user.guild_permissions.administrator = True
+
+        # Mock Phase4Monitor service with error
+        mock_phase4_monitor = AsyncMock()
+        mock_phase4_monitor.get_dashboard_data = AsyncMock(side_effect=Exception("Test error"))
+
+        # Mock service container
+        admin_cog.bot.service_container = MagicMock()
+        admin_cog.bot.service_container.get_service.return_value = mock_phase4_monitor
+
+        # Execute command
+        await admin_cog.stats.callback(admin_cog, mock_interaction)
+
+        # Verify interaction responses
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called_once()
+
+        # Verify error embed was sent
+        call_args = mock_interaction.followup.send.call_args
+        assert "embed" in call_args.kwargs
+
+        embed = call_args.kwargs["embed"]
+        assert embed.title == "❌ システムメトリクス"
+        assert "統計情報の取得中にエラーが発生しました" in embed.description

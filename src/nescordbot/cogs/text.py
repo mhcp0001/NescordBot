@@ -5,7 +5,7 @@ import html
 import logging
 import re
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import aiohttp
 import discord
@@ -14,6 +14,9 @@ from discord.ext import commands
 
 from ..services.note_processing import NoteProcessingService
 from ..services.obsidian_github import ObsidianGitHubService
+
+if TYPE_CHECKING:
+    from ..services.knowledge_manager import KnowledgeManager
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ class TextCog(commands.Cog):
         bot: commands.Bot,
         note_processing_service: Optional[NoteProcessingService] = None,
         obsidian_service: Optional[ObsidianGitHubService] = None,
+        knowledge_manager: Optional["KnowledgeManager"] = None,
     ):
         """Initialize the TextCog.
 
@@ -38,10 +42,12 @@ class TextCog(commands.Cog):
             bot: The Discord bot instance
             note_processing_service: Service for AI text processing
             obsidian_service: Service for GitHub/Obsidian integration
+            knowledge_manager: Service for PKM functionality
         """
         self.bot = bot
         self.note_processing_service = note_processing_service
         self.obsidian_service = obsidian_service
+        self.knowledge_manager = knowledge_manager
 
         logger.info("TextCog initialized")
         if not self.note_processing_service:
@@ -105,6 +111,7 @@ class TextCog(commands.Cog):
                 content=fleeting_note_content,
                 summary=summary,
                 obsidian_service=self.obsidian_service,
+                knowledge_manager=self.knowledge_manager,
                 note_type="text",
                 message=message,
             )
@@ -259,6 +266,7 @@ created: {created_date}
                 content=fleeting_note_content,
                 summary=summary,
                 obsidian_service=self.obsidian_service,
+                knowledge_manager=self.knowledge_manager,
                 note_type="text",
                 message=pseudo_message,  # type: ignore
             )
@@ -313,6 +321,7 @@ class FleetingNoteView(discord.ui.View):
         content: str,
         summary: str,
         obsidian_service: Optional[ObsidianGitHubService],
+        knowledge_manager: Optional["KnowledgeManager"] = None,
         note_type: str = "voice",
         message: Optional[discord.Message] = None,
     ):
@@ -322,6 +331,7 @@ class FleetingNoteView(discord.ui.View):
             content: Fleeting Note content
             summary: Note summary
             obsidian_service: ObsidianGitHub service
+            knowledge_manager: KnowledgeManager for PKM functionality
             note_type: Type of note (text/voice)
             message: Original Discord message
         """
@@ -329,6 +339,7 @@ class FleetingNoteView(discord.ui.View):
         self.content = content
         self.summary = summary
         self.obsidian_service = obsidian_service
+        self.knowledge_manager = knowledge_manager
         self.note_type = note_type
         self.message = message
 
@@ -452,6 +463,347 @@ class FleetingNoteView(discord.ui.View):
                 # If followup fails too, at least log the error
                 logger.error("Failed to send error message to user")
 
+    @discord.ui.button(label="PKMに保存", style=discord.ButtonStyle.success, emoji="🧠")
+    async def save_to_pkm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Save Fleeting Note to PKM system with auto-tagging.
+
+        Args:
+            interaction: Discord interaction
+            button: Button that was clicked
+        """
+        logger = logging.getLogger(__name__)
+
+        try:
+            if not self.knowledge_manager:
+                await interaction.response.send_message(
+                    "❌ PKMサービスが利用できません。\n" "管理者に設定確認を依頼してください。",
+                    ephemeral=True,
+                )
+                return
+
+            # Defer response for processing
+            await interaction.response.defer(ephemeral=True)
+
+            # Generate note title from summary
+            title = self.summary[:50].strip() if self.summary else f"Discord {self.note_type} note"
+            if len(title) < len(self.summary):
+                title += "..."
+
+            try:
+                # Auto-suggest tags using KnowledgeManager
+                tag_suggestions = await self.knowledge_manager.suggest_tags_for_content(
+                    content=self.content, title=title, max_suggestions=5
+                )
+
+                # Extract high-confidence tags (>0.8)
+                auto_tags = [
+                    suggestion["tag"]
+                    for suggestion in tag_suggestions
+                    if suggestion["confidence"] > 0.8
+                ]
+
+                # Ensure we have at least basic tags
+                if not auto_tags:
+                    auto_tags = ["fleeting-note", self.note_type]
+                elif "fleeting-note" not in auto_tags:
+                    auto_tags.append("fleeting-note")
+
+                logger.info(f"Auto-generated tags for PKM: {auto_tags}")
+
+                # Create note in PKM system
+                note_id = await self.knowledge_manager.create_note(
+                    title=title,
+                    content=self.content,
+                    tags=auto_tags,
+                    source_type="discord",
+                    source_id=str(self.message.id) if self.message else None,
+                    user_id=str(interaction.user.id),
+                    channel_id=str(interaction.channel.id) if interaction.channel else None,
+                    guild_id=str(interaction.guild.id) if interaction.guild else None,
+                )
+
+                # Search for related notes
+                related_notes = []
+                try:
+                    search_results = await self.knowledge_manager.search_notes(query=title, limit=4)
+                    # Filter out the just-created note
+                    related_notes = [note for note in search_results if note.get("id") != note_id][
+                        :3
+                    ]  # Limit to 3 related notes
+                except Exception as e:
+                    logger.warning(f"Related notes search failed: {e}")
+
+                # Build response message
+                response_parts = [
+                    "🧠 **PKMノートを作成しました！**",
+                    f"📝 **タイトル**: {title}",
+                    f"🏷️ **タグ**: {', '.join(auto_tags)}",
+                    f"🆔 **ノートID**: `{note_id}`",
+                ]
+
+                if related_notes:
+                    response_parts.append("\n🔗 **関連ノート**:")
+                    for i, note in enumerate(related_notes[:3], 1):
+                        note_title = note.get("title", "無題")[:30]
+                        score = note.get("score", 0)
+                        response_parts.append(f"{i}. {note_title} (類似度: {score:.2f})")
+
+                # Suggest additional tags
+                suggested_tags = [
+                    suggestion["tag"]
+                    for suggestion in tag_suggestions
+                    if suggestion["confidence"] <= 0.8 and suggestion["confidence"] > 0.5
+                ]
+                if suggested_tags:
+                    response_parts.append(f"\n💡 **追加タグ候補**: {', '.join(suggested_tags[:3])}")
+
+                await interaction.followup.send("\n".join(response_parts), ephemeral=True)
+
+                # Disable button after successful save
+                button.disabled = True
+                if interaction.message:
+                    await interaction.message.edit(view=self)
+
+                logger.info(f"PKM note created successfully: {note_id}")
+
+            except Exception as e:
+                logger.error(f"Error creating PKM note: {e}")
+                await interaction.followup.send(
+                    f"❌ PKMノートの作成中にエラーが発生しました: {str(e)}\n" f"💡 管理者にお問い合わせください。",
+                    ephemeral=True,
+                )
+
+        except Exception as e:
+            logger.error(f"Error in save_to_pkm button: {e}", exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ エラーが発生しました。", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ エラーが発生しました。", ephemeral=True)
+            except Exception:
+                logger.error("Failed to send error message to user")
+
+    @discord.ui.button(label="🔗 関連ノート", style=discord.ButtonStyle.secondary)
+    async def show_related_notes(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Show related notes based on content."""
+        logger = logging.getLogger(__name__)
+
+        try:
+            if not self.knowledge_manager:
+                await interaction.response.send_message("❌ PKMサービスが利用できません。", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+
+            # Search for related notes using content and summary
+            search_query = f"{self.summary} {self.content[:200]}"  # Limit to avoid token limit
+
+            try:
+                related_notes = await self.knowledge_manager.search_notes(
+                    query=search_query, limit=5
+                )
+
+                if not related_notes:
+                    await interaction.followup.send("🔍 関連するノートが見つかりませんでした。", ephemeral=True)
+                    return
+
+                # Build response with related notes
+                response_parts = [f"🔗 **関連ノート ({len(related_notes)}件)**\n"]
+
+                for i, note in enumerate(related_notes, 1):
+                    note_title = note.get("title", "無題")[:40]
+                    note_tags = note.get("tags", [])
+                    created_at = note.get("created_at", "")
+
+                    # Format creation date
+                    date_str = ""
+                    if created_at:
+                        try:
+                            from datetime import datetime
+
+                            dt = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                            date_str = f" ({dt.strftime('%m-%d')})"
+                        except Exception:
+                            pass
+
+                    # Show tags if available
+                    tag_str = ""
+                    if note_tags and isinstance(note_tags, list):
+                        tag_str = f" `{', '.join(note_tags[:3])}`"
+
+                    response_parts.append(f"{i}. **{note_title}**{date_str}{tag_str}")
+
+                    # Add a brief content preview
+                    content_preview = note.get("content", "")[:80]
+                    if content_preview:
+                        response_parts.append(f"   _{content_preview}..._")
+
+                # Add search tips
+                response_parts.append("\n💡 **ヒント**: `/pkm search <キーワード>` で詳細検索が可能です")
+
+                await interaction.followup.send("\n".join(response_parts), ephemeral=True)
+
+            except Exception as e:
+                logger.error(f"Error searching related notes: {e}")
+                await interaction.followup.send("❌ 関連ノート検索中にエラーが発生しました。", ephemeral=True)
+
+        except Exception as e:
+            logger.error(f"Error in show_related_notes: {e}", exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ エラーが発生しました。", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ エラーが発生しました。", ephemeral=True)
+            except Exception:
+                logger.error("Failed to send error message to user")
+
+    @discord.ui.button(label="🔄 Permanent化", style=discord.ButtonStyle.success, row=1)
+    async def convert_to_permanent(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        """Convert Fleeting Note to Permanent Note with expanded content."""
+        logger = logging.getLogger(__name__)
+
+        try:
+            if not self.knowledge_manager:
+                await interaction.response.send_message("❌ PKMサービスが利用できません。", ephemeral=True)
+                return
+
+            await interaction.response.defer(ephemeral=True)
+
+            try:
+                # Generate expanded content using AI
+                expanded_content = await self._generate_expanded_content()
+
+                if not expanded_content:
+                    await interaction.followup.send("❌ コンテンツの拡張に失敗しました。", ephemeral=True)
+                    return
+
+                # Suggest permanent tags (remove fleeting-note, add structured tags)
+                permanent_tags = await self._generate_permanent_tags()
+
+                # Create permanent note
+                permanent_title = f"[Permanent] {self.summary[:40]}"
+
+                permanent_note_id = await self.knowledge_manager.create_note(
+                    title=permanent_title,
+                    content=expanded_content,
+                    tags=permanent_tags,
+                    source_type="permanent_conversion",
+                    source_id=str(self.message.id) if self.message else None,
+                    user_id=str(interaction.user.id),
+                    channel_id=str(interaction.channel.id) if interaction.channel else None,
+                    guild_id=str(interaction.guild.id) if interaction.guild else None,
+                )
+
+                # Build success response
+                response_parts = [
+                    "✨ **Permanentノートを作成しました！**",
+                    f"📝 **タイトル**: {permanent_title}",
+                    f"🏷️ **新タグ**: {', '.join(permanent_tags)}",
+                    f"🆔 **ノートID**: `{permanent_note_id}`",
+                    "\n📈 **拡張内容**:",
+                    "- 詳細な説明と文脈を追加",
+                    "- 関連情報の整理",
+                    "- アクションアイテムの抽出",
+                    "\n💡 永続的な知識として体系化されました。",
+                ]
+
+                await interaction.followup.send("\n".join(response_parts), ephemeral=True)
+
+                # Disable the button after successful conversion
+                button.disabled = True
+                button.label = "✅ Permanent化済み"
+                if interaction.message:
+                    await interaction.message.edit(view=self)
+
+                logger.info(f"Fleeting note converted to permanent: {permanent_note_id}")
+
+            except Exception as e:
+                logger.error(f"Error converting to permanent note: {e}")
+                await interaction.followup.send(
+                    f"❌ Permanent変換中にエラーが発生しました: {str(e)}", ephemeral=True
+                )
+
+        except Exception as e:
+            logger.error(f"Error in convert_to_permanent: {e}", exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ エラーが発生しました。", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ エラーが発生しました。", ephemeral=True)
+            except Exception:
+                logger.error("Failed to send error message to user")
+
+    async def _generate_expanded_content(self) -> str:
+        """Generate expanded content for permanent note using AI."""
+        try:
+            # Note: This would need to be implemented with actual AI service
+            # For now, return a structured expansion
+            expanded = f"""# {self.summary}
+
+## 概要
+{self.summary}
+
+## 詳細
+{self.content}
+
+## 関連情報
+このメモは Discord の {self.note_type} メッセージから作成されました。
+詳細な文脈や関連情報の追加が推奨されます。
+
+## アクションアイテム
+- [ ] 詳細な調査や分析が必要な場合は追加検討
+- [ ] 関連するノートとの連携を確認
+
+## メタ情報
+- 作成日: {datetime.now().strftime('%Y-%m-%d')}
+- ソース: Discord Fleeting Note
+- タイプ: {self.note_type}
+- 変換日: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+"""
+            return expanded
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generating expanded content: {e}")
+            return ""
+
+    async def _generate_permanent_tags(self) -> List[str]:
+        """Generate appropriate tags for permanent note."""
+        try:
+            # Remove fleeting-note tag and add permanent-note
+            permanent_tags = ["permanent-note", "structured"]
+
+            # Add type-specific tag
+            if self.note_type:
+                permanent_tags.append(f"{self.note_type}-converted")
+
+            # Try to suggest additional tags based on content
+            if self.knowledge_manager:
+                try:
+                    tag_suggestions = await self.knowledge_manager.suggest_tags_for_content(
+                        content=self.content, title=self.summary, max_suggestions=3
+                    )
+
+                    # Add high-confidence tags
+                    for suggestion in tag_suggestions:
+                        if suggestion["confidence"] > 0.7:
+                            tag = suggestion["tag"]
+                            if tag not in permanent_tags and tag != "fleeting-note":
+                                permanent_tags.append(tag)
+
+                except Exception as e:
+                    logger = logging.getLogger(__name__)
+                    logger.warning(f"Failed to get tag suggestions: {e}")
+
+            return permanent_tags[:6]  # Limit to 6 tags
+
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generating permanent tags: {e}")
+            return ["permanent-note", "structured"]
+
 
 async def setup(bot: commands.Bot):
     """Setup function to add the cog to the bot.
@@ -462,7 +814,8 @@ async def setup(bot: commands.Bot):
     # Get services from bot if available
     note_processing_service = getattr(bot, "note_processing_service", None)
     obsidian_service = getattr(bot, "obsidian_service", None)
+    knowledge_manager = getattr(bot, "knowledge_manager", None)
 
     # Create and add the cog
-    await bot.add_cog(TextCog(bot, note_processing_service, obsidian_service))
+    await bot.add_cog(TextCog(bot, note_processing_service, obsidian_service, knowledge_manager))
     logger.info("TextCog loaded")

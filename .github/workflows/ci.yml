@@ -1,57 +1,53 @@
 name: CI
 
+permissions:
+  contents: read
+  pull-requests: write  # For coverage reports and comments
+
 on:
   push:
-    branches: [ main, develop, phase2-development ]
+    branches:
+      - main
+      - develop
+      - 'feature/**'     # All feature branches (type/issue-number-description)
+      - 'fix/**'         # All fix branches
+      - 'hotfix/**'      # All hotfix branches
+      - 'release/**'     # All release branches
+    paths-ignore:
+      - '**.md'          # Documentation files
+      - 'docs/**'        # Documentation directory
+      - '.github/ISSUE_TEMPLATE/**'  # Issue templates
+      - '.github/PULL_REQUEST_TEMPLATE.md'  # PR template
+      - 'LICENSE'        # License file
+      - '.gitignore'     # Git ignore file
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - develop
+      - 'feature/phase*' # Phase integration branches
+      - 'release/**'     # Release branches
+    paths-ignore:
+      - '**.md'          # Documentation files
+      - 'docs/**'        # Documentation directory
+      - '.github/ISSUE_TEMPLATE/**'  # Issue templates
+      - '.github/PULL_REQUEST_TEMPLATE.md'  # PR template
+      - 'LICENSE'        # License file
+      - '.gitignore'     # Git ignore file
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
+    timeout-minutes: 5
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
+    - name: Setup Python and Poetry
+      uses: ./.github/actions/setup-python-poetry
       with:
-        python-version: ${{ matrix.python-version }}
-
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: latest
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-        installer-parallel: true
-
-    - name: Load cached venv
-      id: cached-poetry-dependencies
-      uses: actions/cache@v3
-      with:
-        path: .venv
-        key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
-
-    - name: Install dependencies
-      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-      run: poetry install --no-interaction --no-root
-
-    - name: Install project
-      run: poetry install --no-interaction
-
-    - name: Set up test environment
-      run: |
-        mkdir -p data
-        mkdir -p logs
-        cp .env.example .env.test
-        echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
-        echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
-        echo "LOG_LEVEL=DEBUG" >> .env.test
+        python-version: "3.11"
+        cache-key-suffix: "-lint"
 
     - name: Run code formatting check (Black)
       run: poetry run black --check src/ tests/
@@ -65,6 +61,76 @@ jobs:
     - name: Run type checking (mypy)
       run: poetry run mypy src/ --ignore-missing-imports
 
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+      fail-fast: false  # Continue other jobs if one fails
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install Poetry with retry
+      uses: snok/install-poetry@v1
+      with:
+        version: latest
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+      env:
+        # Increase timeout for Poetry installation (increased from 300 to 600 seconds)
+        POETRY_HTTP_TIMEOUT: 600
+        POETRY_REQUESTS_TIMEOUT: 600
+
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          venv-${{ runner.os }}-${{ matrix.python-version }}-
+
+    - name: Install dependencies with retry
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: |
+        # Retry logic for Poetry install with increased timeouts and retries
+        for i in {1..5}; do
+          if poetry install --no-interaction --no-root; then
+            echo "Poetry install succeeded on attempt $i"
+            break
+          else
+            echo "Poetry install failed on attempt $i"
+            if [ $i -eq 5 ]; then
+              echo "Poetry install failed after 5 attempts"
+              exit 1
+            fi
+            sleep 60
+          fi
+        done
+      env:
+        POETRY_HTTP_TIMEOUT: 600
+        POETRY_REQUESTS_TIMEOUT: 600
+
+    - name: Install project
+      run: poetry install --no-interaction
+
+    - name: Set up test environment
+      run: |
+        mkdir -p data logs
+        cp .env.example .env.test
+        echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" >> .env.test
+        echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.test
+        echo "LOG_LEVEL=DEBUG" >> .env.test
+
     - name: Run tests with pytest
       env:
         DISCORD_TOKEN: MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234
@@ -72,14 +138,19 @@ jobs:
         LOG_LEVEL: DEBUG
       run: |
         poetry run pytest tests/ \
-          --verbose \
+          --forked \
+          --tb=short \
           --cov=src \
           --cov-report=xml \
           --cov-report=html \
           --cov-report=term-missing \
-          --junit-xml=test-results.xml \
+          --junit-xml=test-results-${{ matrix.python-version }}.xml \
           -m "not slow and not network" \
-          -n auto
+          --timeout=60 \
+          --timeout-method=thread \
+          --maxfail=5 \
+          -n auto \
+          -v
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
@@ -87,7 +158,7 @@ jobs:
       with:
         name: test-results-${{ matrix.python-version }}
         path: |
-          test-results.xml
+          test-results-${{ matrix.python-version }}.xml
           htmlcov/
           .coverage
 
@@ -102,6 +173,7 @@ jobs:
 
   security:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -115,9 +187,15 @@ jobs:
       uses: snok/install-poetry@v1
       with:
         version: latest
+      env:
+        POETRY_HTTP_TIMEOUT: 600
+        POETRY_REQUESTS_TIMEOUT: 600
 
     - name: Install dependencies
       run: poetry install --no-interaction
+      env:
+        POETRY_HTTP_TIMEOUT: 600
+        POETRY_REQUESTS_TIMEOUT: 600
 
     - name: Run security checks (bandit)
       run: |
@@ -143,6 +221,7 @@ jobs:
   docker-integration-test:
     runs-on: ubuntu-latest
     needs: test
+    timeout-minutes: 15
     if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
 
     steps:
@@ -167,6 +246,7 @@ jobs:
         # Create test environment file for Docker
         echo "DISCORD_TOKEN=MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234" > .env.docker
         echo "OPENAI_API_KEY=sk-abcdef1234567890abcdef1234567890abcdef1234567890ab" >> .env.docker
+        echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env.docker
         echo "LOG_LEVEL=DEBUG" >> .env.docker
 
     - name: Run integration tests in Docker
@@ -181,8 +261,8 @@ jobs:
               --verbose \
               -m 'integration' \
               --maxfail=3 \
-              --junit-xml=/app/test-results/docker-integration-results.xml \
-              -n auto || true
+              --timeout=120 \
+              --junit-xml=/app/test-results/docker-integration-results.xml || true
           "
 
     - name: Test bot startup and environment validation

@@ -17,13 +17,24 @@ from .config import get_config_manager
 from .logger import get_logger
 from .security import SecurityValidator
 from .services import (
+    AlertManager,
+    APIMonitor,
     BatchProcessor,
     DatabaseService,
+    EmbeddingService,
+    FallbackManager,
     GitHubAuthManager,
     GitHubService,
     GitOperationService,
+    KnowledgeManager,
     NoteProcessingService,
     ObsidianGitHubService,
+    Phase4Monitor,
+    PrivacyManager,
+    SearchEngine,
+    SyncManager,
+    TokenManager,
+    create_service_container,
 )
 
 
@@ -84,6 +95,9 @@ class NescordBot(commands.Bot):
         # Initialize ObsidianGitHub integration services
         self._init_obsidian_services()
 
+        # Initialize ServiceContainer with Phase 4 services
+        self._init_service_container()
+
         self.logger.info("NescordBot instance created")
 
     async def setup_hook(self) -> None:
@@ -107,6 +121,30 @@ class NescordBot(commands.Bot):
 
             # Initialize ObsidianGitHub services if available
             await self._init_obsidian_services_async()
+
+            # Initialize and start Phase 4 monitoring services
+            if self.service_container:
+                try:
+                    # Initialize services
+                    await self.service_container.initialize_services()
+                    self.logger.info("ServiceContainer services initialized")
+
+                    # Start Phase4Monitor if available
+                    if self.service_container.has_service(Phase4Monitor):
+                        phase4_monitor = self.service_container.get_service(Phase4Monitor)
+                        await phase4_monitor.start_monitoring()
+                        self.logger.info("Phase4Monitor started")
+
+                    # Start AlertManager if available and enabled
+                    if self.service_container.has_service(AlertManager) and getattr(
+                        self.config, "alert_enabled", True
+                    ):
+                        alert_manager = self.service_container.get_service(AlertManager)
+                        await alert_manager.start_monitoring()
+                        self.logger.info("AlertManager started")
+
+                except Exception as e:
+                    self.logger.error(f"Failed to initialize Phase 4 services: {e}")
 
             # Load cogs
             await self._load_cogs()
@@ -318,6 +356,28 @@ class NescordBot(commands.Bot):
             await self.obsidian_service.shutdown()
             self.logger.info("ObsidianGitHub service stopped")
 
+        # Shutdown ServiceContainer services
+        if hasattr(self, "service_container") and self.service_container:
+            try:
+                # Stop AlertManager if running
+                if self.service_container.has_service(AlertManager):
+                    alert_manager = self.service_container.get_service(AlertManager)
+                    await alert_manager.close()
+                    self.logger.info("AlertManager stopped")
+
+                # Stop Phase4Monitor if running
+                if self.service_container.has_service(Phase4Monitor):
+                    phase4_monitor = self.service_container.get_service(Phase4Monitor)
+                    await phase4_monitor.close()
+                    self.logger.info("Phase4Monitor stopped")
+
+                # Shutdown all services
+                await self.service_container.shutdown_services()
+                self.logger.info("ServiceContainer services stopped")
+
+            except Exception as e:
+                self.logger.error(f"Error shutting down ServiceContainer: {e}")
+
         await super().close()
         self.logger.info("Bot shutdown complete")
 
@@ -390,6 +450,150 @@ class NescordBot(commands.Bot):
             self.logger.error(f"Failed to initialize ObsidianGitHub services async: {e}")
             # Clean up partially initialized services
             self.obsidian_service = None
+
+    def _init_service_container(self) -> None:
+        """Initialize ServiceContainer with Phase 4 services."""
+        try:
+            # Create service container
+            self.service_container = create_service_container(self.config)
+
+            # Register EmbeddingService factory
+            def create_embedding_service() -> EmbeddingService:
+                return EmbeddingService(self.config)
+
+            self.service_container.register_factory(EmbeddingService, create_embedding_service)
+
+            # Register ChromaDBService factory
+            from .services.chromadb_service import ChromaDBService
+
+            def create_chromadb_service() -> ChromaDBService:
+                return ChromaDBService(self.config)
+
+            self.service_container.register_factory(ChromaDBService, create_chromadb_service)
+
+            # Register TokenManager factory
+            def create_token_manager() -> TokenManager:
+                return TokenManager(self.config, self.database_service)
+
+            self.service_container.register_factory(TokenManager, create_token_manager)
+
+            # Register SyncManager factory
+            def create_sync_manager() -> SyncManager:
+                # Get dependencies from service container
+                embedding_service = self.service_container.get_service(EmbeddingService)
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                return SyncManager(
+                    self.config, self.database_service, chromadb_service, embedding_service
+                )
+
+            self.service_container.register_factory(SyncManager, create_sync_manager)
+
+            # KnowledgeManager factory
+            def create_knowledge_manager() -> KnowledgeManager:
+                database_service = self.database_service
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                embedding_service = self.service_container.get_service(EmbeddingService)
+                sync_manager = self.service_container.get_service(SyncManager)
+                obsidian_github_service = self.service_container.get_service(ObsidianGitHubService)
+                return KnowledgeManager(
+                    self.config,
+                    database_service,
+                    chromadb_service,
+                    embedding_service,
+                    sync_manager,
+                    obsidian_github_service,
+                )
+
+            def create_search_engine() -> SearchEngine:
+                database_service = self.database_service
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                embedding_service = self.service_container.get_service(EmbeddingService)
+                return SearchEngine(
+                    chroma_service=chromadb_service,
+                    db_service=database_service,
+                    embedding_service=embedding_service,
+                    config=self.config,
+                )
+
+            self.service_container.register_factory(KnowledgeManager, create_knowledge_manager)
+            self.service_container.register_factory(SearchEngine, create_search_engine)
+
+            # FallbackManager factory
+            def create_fallback_manager() -> FallbackManager:
+                from .services.fallback_manager import FallbackManager
+
+                return FallbackManager(self.config)
+
+            self.service_container.register_factory(FallbackManager, create_fallback_manager)
+
+            # APIMonitor factory (depends on TokenManager and FallbackManager)
+            def create_api_monitor() -> APIMonitor:
+                from .services.api_monitor import APIMonitor
+
+                token_manager = self.service_container.get_service(TokenManager)
+                fallback_manager = self.service_container.get_service(FallbackManager)
+                return APIMonitor(self.config, token_manager, fallback_manager)
+
+            self.service_container.register_factory(APIMonitor, create_api_monitor)
+
+            # Phase4Monitor factory (depends on multiple services)
+            def create_phase4_monitor() -> Phase4Monitor:
+                from .services.phase4_monitor import Phase4Monitor
+
+                token_manager = self.service_container.get_service(TokenManager)
+                api_monitor = self.service_container.get_service(APIMonitor)
+                search_engine = self.service_container.get_service(SearchEngine)
+                knowledge_manager = self.service_container.get_service(KnowledgeManager)
+                chromadb_service = self.service_container.get_service(ChromaDBService)
+                return Phase4Monitor(
+                    config=self.config,
+                    token_manager=token_manager,
+                    api_monitor=api_monitor,
+                    search_engine=search_engine,
+                    knowledge_manager=knowledge_manager,
+                    chromadb_service=chromadb_service,
+                    database_service=self.database_service,
+                )
+
+            self.service_container.register_factory(Phase4Monitor, create_phase4_monitor)
+
+            # AlertManager factory (depends on Phase4Monitor and TokenManager)
+            def create_alert_manager() -> AlertManager:
+                from .services.alert_manager import AlertManager
+
+                phase4_monitor = self.service_container.get_service(Phase4Monitor)
+                token_manager = self.service_container.get_service(TokenManager)
+                return AlertManager(
+                    config=self.config,
+                    bot=self,  # Pass the bot instance for Discord notifications
+                    database_service=self.database_service,
+                    phase4_monitor=phase4_monitor,
+                    token_manager=token_manager,
+                )
+
+            self.service_container.register_factory(AlertManager, create_alert_manager)
+
+            # PrivacyManager factory (depends on AlertManager)
+            def create_privacy_manager() -> PrivacyManager:
+                alert_manager = self.service_container.get_service(AlertManager)
+                return PrivacyManager(
+                    config=self.config,
+                    bot=self,
+                    database_service=self.database_service,
+                    alert_manager=alert_manager,
+                )
+
+            self.service_container.register_factory(PrivacyManager, create_privacy_manager)
+
+            self.logger.info(
+                "ServiceContainer initialized with EmbeddingService, ChromaDBService, "
+                "TokenManager, SyncManager, KnowledgeManager, SearchEngine, FallbackManager, "
+                "APIMonitor, Phase4Monitor, AlertManager, and PrivacyManager"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize ServiceContainer: {e}")
+            self.service_container = None  # type: ignore[assignment]  # type: ignore[assignment]
 
 
 async def main() -> None:

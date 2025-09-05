@@ -30,6 +30,10 @@ pydantic = "^2.5.0"
 PyGithub = "^2.1.1"
 GitPython = "^3.1.40"
 tenacity = "^9.1.2"
+google-generativeai = "0.3.0"
+chromadb = "^1.0.20"
+networkx = "^3.2.1"
+scipy = "^1.11.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^23.12.0"
@@ -44,6 +48,8 @@ bandit = {extras = ["toml"], version = "^1.7.5"}
 safety = "^2.3.5"
 ruff = "^0.12.9"
 pytest-xdist = "^3.8.0"
+pytest-timeout = "^2.1.0"
+pytest-forked = "^1.6.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
