@@ -474,6 +474,64 @@ class CreateNoteHistoryMigration(Migration):
         await connection.execute("DROP TABLE IF EXISTS note_history")
 
 
+class CreateReviewCacheMigration(Migration):
+    """Migration 008: Create review_cache table for performance optimization."""
+
+    def __init__(self):
+        super().__init__(
+            version=8,
+            name="create_review_cache",
+            description="Create review_cache table for review statistics caching",
+        )
+
+    async def up(self, connection: aiosqlite.Connection) -> None:
+        """Create review_cache table."""
+        await connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS review_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cache_key TEXT NOT NULL UNIQUE,
+                user_id TEXT NOT NULL,
+                period_type TEXT NOT NULL,
+                period_start DATETIME NOT NULL,
+                period_end DATETIME NOT NULL,
+                cache_data TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                expires_at DATETIME NOT NULL
+            )
+        """
+        )
+
+        # Create indexes for efficient cache queries
+        await connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_review_cache_key
+            ON review_cache(cache_key)
+        """
+        )
+
+        await connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_review_cache_user_period
+            ON review_cache(user_id, period_type, period_start)
+        """
+        )
+
+        await connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_review_cache_expires
+            ON review_cache(expires_at)
+        """
+        )
+
+    async def down(self, connection: aiosqlite.Connection) -> None:
+        """Drop review_cache table."""
+        await connection.execute("DROP INDEX IF EXISTS idx_review_cache_key")
+        await connection.execute("DROP INDEX IF EXISTS idx_review_cache_user_period")
+        await connection.execute("DROP INDEX IF EXISTS idx_review_cache_expires")
+        await connection.execute("DROP TABLE IF EXISTS review_cache")
+
+
 class DatabaseMigrationManager:
     """
     Database migration management system.
@@ -506,6 +564,7 @@ class DatabaseMigrationManager:
             CreateFTS5IndexMigration(),
             CreateSearchHistoryMigration(),
             CreateNoteHistoryMigration(),
+            CreateReviewCacheMigration(),
         ]
 
         # Verify version sequence
