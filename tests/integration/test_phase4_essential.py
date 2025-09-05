@@ -472,7 +472,7 @@ class TestPhase4RealWorldScenarios:
             text = f"Message {msg_id}: Contact support at help{msg_id}@company.com"
 
             # Track token usage
-            await token_manager.track_usage("message_processing", 25, f"msg_{msg_id}")
+            await token_manager.record_usage("test_provider", "test_model", 25, 10)
 
             # Process for PII
             detected = await privacy_manager.detect_pii(text)

@@ -164,7 +164,19 @@ class TestPhase4ServiceIntegration(TestPhase4IntegrationSetup):
         alert_manager = integration_bot.service_container.get_service(AlertManager)
 
         # Mock database initialization for privacy manager
-        with patch.object(privacy_manager.db, "_initialized", True):
+        mock_conn = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.commit = AsyncMock()
+        mock_conn.fetchall = AsyncMock(return_value=[])
+        mock_conn.fetchone = AsyncMock(return_value=None)
+
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_conn)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.object(privacy_manager.db, "_initialized", True), patch.object(
+            privacy_manager.db, "get_connection", return_value=mock_context
+        ):
             # Initialize privacy manager to load rules
             await privacy_manager.initialize()
 
@@ -204,7 +216,7 @@ class TestPhase4ServiceIntegration(TestPhase4IntegrationSetup):
         # Test retrieval
         search_results = await knowledge_manager.search_notes("Python", limit=5)
         assert len(search_results) > 0
-        assert any("Python" in result.content for result in search_results)
+        assert any("Python" in result.get("content", "") for result in search_results)
 
 
 class TestPhase4EndToEndFlows(TestPhase4IntegrationSetup):
@@ -213,8 +225,8 @@ class TestPhase4EndToEndFlows(TestPhase4IntegrationSetup):
     async def test_voice_to_pkm_workflow(self, integration_bot):
         """Test complete voice message to PKM storage workflow."""
         # Mock voice processing components
-        with patch("src.nescordbot.cogs.voice.Voice._transcribe_audio") as mock_transcribe, patch(
-            "src.nescordbot.cogs.voice.Voice._process_with_gemini"
+        with patch("src.nescordbot.cogs.voice.Voice.transcribe_audio") as mock_transcribe, patch(
+            "src.nescordbot.cogs.voice.Voice.process_with_ai"
         ) as mock_process:
             # Setup mocks
             mock_transcribe.return_value = "This is a test voice message about Python programming"
@@ -258,7 +270,7 @@ class TestPhase4EndToEndFlows(TestPhase4IntegrationSetup):
 
         # Test hybrid search with multiple queries
         for query in sample_data["search_queries"]:
-            results = await search_engine.hybrid_search(query=query, limit=10, semantic_weight=0.7)
+            results = await search_engine.hybrid_search(query=query, limit=10, alpha=0.7)
 
             assert len(results) > 0
             assert all(hasattr(result, "score") for result in results)
@@ -480,9 +492,7 @@ class TestPhase4ComprehensiveIntegration(TestPhase4IntegrationSetup):
             protected_notes.append(protected_content)
 
         # Step 2: Perform searches
-        search_results = await search_engine.hybrid_search(
-            query="programming", limit=10, semantic_weight=0.7
-        )
+        search_results = await search_engine.hybrid_search(query="programming", limit=10, alpha=0.7)
         assert len(search_results) > 0
 
         # Step 3: Create backup of protected data
