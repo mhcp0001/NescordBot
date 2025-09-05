@@ -12,7 +12,11 @@
       "mcp__serena",
       "Bash(poetry run pytest:*)",
       "Bash(git add:*)",
-      "Bash(rm -rf .tmp/**)"
+      "Bash(rm -rf .tmp/**)",
+      "mcp__serena",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
