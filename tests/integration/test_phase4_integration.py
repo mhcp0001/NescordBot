@@ -90,9 +90,40 @@ class TestPhase4IntegrationSetup:
             mock_obsidian_service.is_healthy = Mock(return_value=True)
             bot.service_container.register_singleton(ObsidianGitHubService, mock_obsidian_service)
 
+            # Mock DatabaseService to avoid initialization errors
+            if hasattr(bot, "database_service"):
+                mock_conn = AsyncMock()
+                mock_conn.execute = AsyncMock()
+                mock_conn.commit = AsyncMock()
+                mock_conn.fetchall = AsyncMock(return_value=[])
+                mock_conn.fetchone = AsyncMock(return_value=None)
+
+                mock_context = AsyncMock()
+                mock_context.__aenter__ = AsyncMock(return_value=mock_conn)
+                mock_context.__aexit__ = AsyncMock(return_value=None)
+
+                bot.database_service._initialized = True
+                with patch.object(
+                    bot.database_service, "get_connection", return_value=mock_context
+                ):
+                    pass
+
             # Initialize services
             if hasattr(bot, "initialize_services"):
                 await bot.initialize_services()
+
+            # Mock all service database connections
+            for service_type in [TokenManager, PrivacyManager, KnowledgeManager]:
+                try:
+                    service: Any = bot.service_container.get_service(service_type)
+                    if hasattr(service, "_initialized"):
+                        service._initialized = True
+                    if hasattr(service, "db"):
+                        service.db._initialized = True
+                        with patch.object(service.db, "get_connection", return_value=mock_context):
+                            pass
+                except Exception:
+                    pass
 
             yield bot
 

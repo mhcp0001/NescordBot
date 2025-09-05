@@ -463,40 +463,42 @@ class TestPhase4RealWorldScenarios:
         privacy_manager = integration_bot.service_container.get_service(PrivacyManager)
         token_manager = integration_bot.service_container.get_service(TokenManager)
 
-        import time
+        # Mock TokenManager's database initialization
+        with patch.object(token_manager, "_initialized", True):
+            import time
 
-        start_time = time.time()
+            start_time = time.time()
 
-        # Simulate realistic concurrent load
-        async def process_message(msg_id):
-            text = f"Message {msg_id}: Contact support at help{msg_id}@company.com"
+            # Simulate realistic concurrent load
+            async def process_message(msg_id):
+                text = f"Message {msg_id}: Contact support at help{msg_id}@company.com"
 
-            # Track token usage
-            await token_manager.record_usage("test_provider", "test_model", 25, 10)
+                # Track token usage
+                await token_manager.record_usage("test_provider", "test_model", 25, 10)
 
-            # Process for PII
-            detected = await privacy_manager.detect_pii(text)
+                # Process for PII
+                detected = await privacy_manager.detect_pii(text)
 
-            if detected:
-                from src.nescordbot.services.privacy_manager import PrivacyLevel
+                if detected:
+                    from src.nescordbot.services.privacy_manager import PrivacyLevel
 
-                await privacy_manager.apply_masking(text, PrivacyLevel.MEDIUM)
+                    await privacy_manager.apply_masking(text, PrivacyLevel.MEDIUM)
 
-            return len(detected)
+                return len(detected)
 
-        # Process 20 messages concurrently
-        tasks = [process_message(i) for i in range(20)]
-        results = await asyncio.gather(*tasks)
+            # Process 20 messages concurrently
+            tasks = [process_message(i) for i in range(20)]
+            results = await asyncio.gather(*tasks)
 
-        elapsed = time.time() - start_time
+            elapsed = time.time() - start_time
 
-        # Should process 20 messages within reasonable time
-        assert elapsed < 5.0, f"Processing took {elapsed:.2f}s, expected <5s"
+            # Should process 20 messages within reasonable time
+            assert elapsed < 5.0, f"Processing took {elapsed:.2f}s, expected <5s"
 
-        # All messages should be processed
-        assert len(results) == 20
-        assert all(isinstance(r, int) for r in results)
+            # All messages should be processed
+            assert len(results) == 20
+            assert all(isinstance(r, int) for r in results)
 
-        # System should remain healthy
-        stats = await token_manager.get_usage_stats("message_processing")
-        assert stats["total_tokens"] >= 500  # 20 messages * 25 tokens each
+            # System should remain healthy
+            stats = await token_manager.get_usage_stats("test_provider")
+            assert stats["total_tokens"] >= 500  # 20 messages * 25 tokens each
