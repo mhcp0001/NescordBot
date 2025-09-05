@@ -213,15 +213,17 @@ class KnowledgeManager:
         title: Optional[str] = None,
         content: Optional[str] = None,
         tags: Optional[List[str]] = None,
+        user_id: Optional[str] = None,
     ) -> bool:
         """
-        Update an existing knowledge note.
+        Update an existing knowledge note with history tracking.
 
         Args:
             note_id: Note ID to update
             title: New title (optional)
             content: New content (optional)
             tags: New tags (optional)
+            user_id: User ID for history tracking (optional)
 
         Returns:
             True if update succeeded
@@ -233,14 +235,23 @@ class KnowledgeManager:
             await self.initialize()
 
         try:
-            # Get existing note
+            # Get existing note for history tracking
             existing_note = await self.get_note(note_id)
             if not existing_note:
                 raise KnowledgeManagerError(f"Note not found: {note_id}")
 
+            # Store original values for history
+            title_before = existing_note["title"]
+            content_before = existing_note["content"]
+            tags_before = existing_note["tags"]
+
             # Prepare update data
             update_fields = []
             update_values = []
+
+            final_title = title if title is not None else title_before
+            final_content = content if content is not None else content_before
+            final_tags = tags if tags is not None else tags_before
 
             if title is not None:
                 update_fields.append("title = ?")
@@ -255,9 +266,10 @@ class KnowledgeManager:
 
             if tags is not None:
                 # Combine provided tags with extracted tags
-                extracted_tags = self.extract_tags(content or existing_note["content"])
+                extracted_tags = self.extract_tags(final_content)
                 all_tags = list(set(tags + extracted_tags))
                 tags_json = json.dumps(all_tags, ensure_ascii=False)
+                final_tags = all_tags
 
                 update_fields.append("tags = ?")
                 update_values.append(tags_json)
@@ -269,12 +281,26 @@ class KnowledgeManager:
             update_fields.append("updated_at = ?")
             update_values.append(datetime.now().isoformat())
 
-            # Execute update
-            update_sql = f"UPDATE knowledge_notes SET {', '.join(update_fields)} WHERE id = ?"
-            update_values.append(note_id)
-
             async with self.db.get_connection() as conn:
+                # Execute update
+                update_sql = f"UPDATE knowledge_notes SET {', '.join(update_fields)} WHERE id = ?"
+                update_values.append(note_id)
                 await conn.execute(update_sql, update_values)
+
+                # Save edit history if any changes were made
+                if user_id and (title is not None or content is not None or tags is not None):
+                    await self._save_edit_history(
+                        conn,
+                        note_id=note_id,
+                        title_before=title_before,
+                        content_before=content_before,
+                        tags_before=tags_before,
+                        title_after=final_title,
+                        content_after=final_content,
+                        tags_after=final_tags,
+                        user_id=user_id,
+                    )
+
                 await conn.commit()
 
             # Sync with external services
@@ -286,6 +312,184 @@ class KnowledgeManager:
         except Exception as e:
             logger.error(f"Failed to update note {note_id}: {e}")
             raise KnowledgeManagerError(f"Failed to update note: {e}")
+
+    async def _save_edit_history(
+        self,
+        conn,
+        note_id: str,
+        title_before: str,
+        content_before: str,
+        tags_before: List[str],
+        title_after: str,
+        content_after: str,
+        tags_after: List[str],
+        user_id: str,
+    ) -> None:
+        """Save edit history record."""
+        await conn.execute(
+            """
+            INSERT INTO note_history (
+                note_id, title_before, content_before, tags_before,
+                title_after, content_after, tags_after, user_id, edit_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'update')
+        """,
+            (
+                note_id,
+                title_before,
+                content_before,
+                json.dumps(tags_before, ensure_ascii=False),
+                title_after,
+                content_after,
+                json.dumps(tags_after, ensure_ascii=False),
+                user_id,
+            ),
+        )
+
+    async def get_note_history(self, note_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get edit history for a note.
+
+        Args:
+            note_id: Note ID to get history for
+            limit: Maximum number of history records to return
+
+        Returns:
+            List of history records with diff information
+
+        Raises:
+            KnowledgeManagerError: If history retrieval fails
+        """
+        if not self._initialized:
+            await self.initialize()
+
+        try:
+            async with self.db.get_connection() as conn:
+                cursor = await conn.execute(
+                    """
+                    SELECT id, title_before, content_before, tags_before,
+                           title_after, content_after, tags_after,
+                           user_id, edit_type, timestamp
+                    FROM note_history
+                    WHERE note_id = ?
+                    ORDER BY timestamp DESC, id DESC
+                    LIMIT ?
+                """,
+                    (note_id, limit),
+                )
+
+                rows = await cursor.fetchall()
+                await cursor.close()
+
+                history = []
+                for row in rows:
+                    (
+                        history_id,
+                        title_before,
+                        content_before,
+                        tags_before,
+                        title_after,
+                        content_after,
+                        tags_after,
+                        user_id,
+                        edit_type,
+                        timestamp,
+                    ) = row
+
+                    # Parse tags from JSON
+                    tags_before_parsed = json.loads(tags_before) if tags_before else []
+                    tags_after_parsed = json.loads(tags_after) if tags_after else []
+
+                    # Generate diff information
+                    diffs = self._generate_edit_diff(
+                        title_before,
+                        content_before,
+                        tags_before_parsed,
+                        title_after,
+                        content_after,
+                        tags_after_parsed,
+                    )
+
+                    history.append(
+                        {
+                            "id": history_id,
+                            "user_id": user_id,
+                            "edit_type": edit_type,
+                            "timestamp": timestamp,
+                            "changes": diffs,
+                            "title_before": title_before,
+                            "content_before": content_before,
+                            "tags_before": tags_before_parsed,
+                            "title_after": title_after,
+                            "content_after": content_after,
+                            "tags_after": tags_after_parsed,
+                        }
+                    )
+
+                return history
+
+        except Exception as e:
+            logger.error(f"Failed to get note history for {note_id}: {e}")
+            raise KnowledgeManagerError(f"Failed to get note history: {e}")
+
+    def _generate_edit_diff(
+        self,
+        title_before: str,
+        content_before: str,
+        tags_before: List[str],
+        title_after: str,
+        content_after: str,
+        tags_after: List[str],
+    ) -> Dict[str, Any]:
+        """Generate diff information for edit history."""
+        import difflib
+
+        changes = {}
+
+        # Title changes
+        if title_before != title_after:
+            changes["title"] = {
+                "before": title_before,
+                "after": title_after,
+                "changed": True,
+            }
+
+        # Content changes
+        if content_before != content_after:
+            # Generate unified diff
+            content_diff = list(
+                difflib.unified_diff(
+                    content_before.splitlines(keepends=True),
+                    content_after.splitlines(keepends=True),
+                    fromfile="before",
+                    tofile="after",
+                    lineterm="",
+                )
+            )
+
+            changes["content"] = {
+                "before_lines": len(content_before.splitlines()),
+                "after_lines": len(content_after.splitlines()),
+                "diff": content_diff,
+                "changed": True,
+            }
+
+        # Tags changes
+        tags_before_set = set(tags_before)
+        tags_after_set = set(tags_after)
+
+        if tags_before_set != tags_after_set:
+            added_tags = list(tags_after_set - tags_before_set)
+            removed_tags = list(tags_before_set - tags_after_set)
+
+            changes["tags"] = {
+                "added": added_tags,
+                "removed": removed_tags,
+                "before": tags_before,
+                "after": tags_after,
+                "changed": True,
+            }
+
+        return changes
 
     async def delete_note(self, note_id: str) -> bool:
         """

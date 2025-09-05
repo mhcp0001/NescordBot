@@ -479,14 +479,16 @@ class TestDatabaseServiceIntegration:
         result = await cursor.fetchone()
         await cursor.close()
 
-        # Should have applied 5 migrations
-        assert result[0] == 6
+        # Should have applied 7 migrations (including Migration 007: note_history)
+        assert result[0] == 7
 
         # Check new tables exist
         cursor = await service.connection.execute(
             """
             SELECT name FROM sqlite_master
-            WHERE type='table' AND name IN ('knowledge_notes', 'note_links', 'token_usage')
+            WHERE type='table' AND name IN (
+                'knowledge_notes', 'note_links', 'token_usage', 'note_history'
+            )
         """
         )
         tables = await cursor.fetchall()
@@ -496,6 +498,7 @@ class TestDatabaseServiceIntegration:
         assert "knowledge_notes" in table_names
         assert "note_links" in table_names
         assert "token_usage" in table_names
+        assert "note_history" in table_names
 
         await service.close()
 
@@ -649,8 +652,8 @@ class TestMigrationEdgeCases:
         """Test migration on completely empty database."""
         result = await migration_manager.migrate_to_latest()
 
-        assert result["applied"] == 6  # All 6 migrations applied
-        assert result["current_version"] == 6
+        assert result["applied"] == 7  # All 7 migrations applied (updated from 6 to 7)
+        assert result["current_version"] == 7  # Updated from 6 to 7
 
     @pytest.mark.asyncio
     async def test_already_migrated_database(self, migration_manager):
@@ -662,7 +665,7 @@ class TestMigrationEdgeCases:
         result = await migration_manager.migrate_to_latest()
 
         assert result["applied"] == 0  # No new migrations
-        assert result["current_version"] == 6
+        assert result["current_version"] == 7  # Updated from 6 to 7 (Migration 007 added)
 
     @pytest.mark.asyncio
     async def test_partial_migration_rollback(self, migration_manager):
@@ -673,7 +676,9 @@ class TestMigrationEdgeCases:
         # Rollback to version 3
         result = await migration_manager.rollback_to_version(3)
 
-        assert result["rolled_back"] == 3  # Versions 4, 5, and 6 rolled back
+        assert (
+            result["rolled_back"] == 4
+        )  # Versions 4, 5, 6, and 7 rolled back (updated from 3 to 4)
         assert result["current_version"] == 3
 
     @pytest.mark.asyncio
@@ -690,12 +695,12 @@ class TestMigrationEdgeCases:
         status = await migration_manager.get_migration_status()
 
         assert status["current_version"] == 3
-        assert status["latest_version"] == 6
+        assert status["latest_version"] == 7  # Updated from 6 to 7 (Migration 007 added)
         assert status["applied_migrations"] == 3
-        assert status["pending_migrations"] == 3
+        assert status["pending_migrations"] == 4  # Updated from 3 to 4 (one more pending migration)
         assert status["integrity_valid"] is True
         assert len(status["migrations"]["applied"]) == 3
-        assert len(status["migrations"]["pending"]) == 3
+        assert len(status["migrations"]["pending"]) == 4  # Updated from 3 to 4
 
 
 @pytest.mark.asyncio

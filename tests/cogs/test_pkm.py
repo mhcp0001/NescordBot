@@ -450,6 +450,114 @@ class TestPKMCog:
         embed = call_args[1]["embed"]
         assert "エラー" in embed.title
 
+    @pytest.mark.asyncio
+    async def test_edit_command_with_note_id(
+        self, pkm_cog, mock_interaction, mock_knowledge_manager
+    ):
+        """Test edit command with direct note ID."""
+        # Setup
+        note_data = {
+            "id": "test-note-1",
+            "title": "Test Note",
+            "content": "Original content",
+            "tags": ["test"],
+            "user_id": "123456789",  # Match mock_interaction user id
+        }
+        mock_knowledge_manager.get_note.return_value = note_data
+
+        # Execute
+        await pkm_cog.edit_command.callback(pkm_cog, mock_interaction, note_id="test-note-1")
+
+        # Verify
+        mock_knowledge_manager.get_note.assert_called_once_with("test-note-1")
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called()
+        mock_interaction.edit_original_response.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_edit_command_note_not_found(
+        self, pkm_cog, mock_interaction, mock_knowledge_manager
+    ):
+        """Test edit command with non-existent note ID."""
+        # Setup
+        mock_knowledge_manager.get_note.return_value = None
+
+        # Execute
+        await pkm_cog.edit_command.callback(pkm_cog, mock_interaction, note_id="non-existent")
+
+        # Verify
+        mock_knowledge_manager.get_note.assert_called_once_with("non-existent")
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called_once()
+
+        # Check error message
+        call_args = mock_interaction.followup.send.call_args
+        embed = call_args[1]["embed"]
+        assert "見つかりません" in embed.description
+
+    @pytest.mark.asyncio
+    async def test_edit_command_with_query_search(
+        self, pkm_cog, mock_interaction, mock_knowledge_manager
+    ):
+        """Test edit command with query-based search."""
+        # Setup
+        search_results = [
+            {"id": "note-1", "title": "Test Note 1", "content": "Content 1", "tags": []},
+            {"id": "note-2", "title": "Test Note 2", "content": "Content 2", "tags": []},
+        ]
+        mock_search_engine = pkm_cog.search_engine
+        mock_search_engine.hybrid_search.return_value = search_results
+
+        # Execute
+        await pkm_cog.edit_command.callback(pkm_cog, mock_interaction, query="test search")
+
+        # Verify
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called()
+
+        # Check that selection view was sent
+        call_args = mock_interaction.followup.send.call_args
+        assert call_args[1]["view"] is not None
+
+    @pytest.mark.asyncio
+    async def test_edit_command_recent_notes(
+        self, pkm_cog, mock_interaction, mock_knowledge_manager
+    ):
+        """Test edit command showing recent notes."""
+        # Setup
+        recent_notes = [
+            {"id": "recent-1", "title": "Recent Note 1", "content": "Content", "tags": []},
+            {"id": "recent-2", "title": "Recent Note 2", "content": "Content", "tags": []},
+        ]
+        mock_knowledge_manager.list_notes.return_value = recent_notes
+
+        # Execute
+        await pkm_cog.edit_command.callback(pkm_cog, mock_interaction)
+
+        # Verify
+        mock_knowledge_manager.list_notes.assert_called_once_with(
+            user_id=str(mock_interaction.user.id), limit=10, offset=0
+        )
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_edit_command_no_results(self, pkm_cog, mock_interaction, mock_knowledge_manager):
+        """Test edit command when no notes are found."""
+        # Setup
+        mock_search_engine = pkm_cog.search_engine
+        mock_search_engine.hybrid_search.return_value = []
+
+        # Execute
+        await pkm_cog.edit_command.callback(pkm_cog, mock_interaction, query="no results")
+
+        # Verify
+        mock_interaction.response.defer.assert_called_once()
+        mock_interaction.followup.send.assert_called()
+        call_args = mock_interaction.followup.send.call_args
+        embed = call_args[1]["embed"]
+        assert "該当するノートが見つかりませんでした" in embed.description
+
 
 class TestPKMEmbeds:
     """Test cases for PKM embed formatting."""
