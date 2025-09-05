@@ -695,12 +695,12 @@ class TestMigrationEdgeCases:
         status = await migration_manager.get_migration_status()
 
         assert status["current_version"] == 3
-        assert status["latest_version"] == 7  # Updated from 6 to 7 (Migration 007 added)
+        assert status["latest_version"] == 8  # Updated from 7 to 8 (Migration 008 added)
         assert status["applied_migrations"] == 3
-        assert status["pending_migrations"] == 4  # Updated from 3 to 4 (one more pending migration)
+        assert status["pending_migrations"] == 5  # Updated from 4 to 5 (one more pending migration)
         assert status["integrity_valid"] is True
         assert len(status["migrations"]["applied"]) == 3
-        assert len(status["migrations"]["pending"]) == 4  # Updated from 3 to 4
+        assert len(status["migrations"]["pending"]) == 5  # Updated from 4 to 5
 
 
 @pytest.mark.asyncio

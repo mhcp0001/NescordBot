@@ -19,6 +19,7 @@ from ..services import (
     SearchQueryError,
     ServiceContainer,
 )
+from ..services.review_service import ReviewService, ReviewServiceError
 from ..services.search_engine import SearchMode
 from ..ui.pkm_embeds import PKMEmbed
 from ..ui.pkm_views import (
@@ -55,6 +56,7 @@ class PKMCog(commands.Cog):
         self.bot = bot
         self.knowledge_manager: Optional[KnowledgeManager] = None
         self.search_engine: Optional[SearchEngine] = None
+        self.review_service: Optional[ReviewService] = None
         self._initialized = False
 
         logger.info("PKMCog initialized")
@@ -77,8 +79,17 @@ class PKMCog(commands.Cog):
             self.knowledge_manager = service_container.get_service(KnowledgeManager)
             self.search_engine = service_container.get_service(SearchEngine)
 
+            # ReviewServiceを追加で作成（ServiceContainerに登録されていないため）
+            from ..config import BotConfig
+            from ..services.database import DatabaseService
+
+            config: BotConfig = service_container.get_service(BotConfig)
+            db: DatabaseService = service_container.get_service(DatabaseService)
+            self.review_service = ReviewService(config, db, self.knowledge_manager)
+
             # サービス初期化確認
             await self.knowledge_manager.initialize()
+            await self.review_service.initialize()
 
             self._initialized = True
             logger.info("PKMCog services initialized successfully")
@@ -1182,6 +1193,244 @@ class PKMCog(commands.Cog):
             logger.error(f"Error in edit command: {e}")
             embed = PKMEmbed.error("エラーが発生しました", "ノート編集処理中にエラーが発生しました。")
             await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # Review command group
+    review_group = app_commands.Group(
+        name="review",
+        description="定期的な知識レビューと成長分析",
+    )
+
+    @review_group.command(name="daily", description="今日の知識活動をレビューします")
+    async def review_daily_command(self, interaction: discord.Interaction) -> None:
+        """Generate daily knowledge review."""
+        await self._check_services(interaction)
+
+        try:
+            await interaction.response.defer(thinking=True)
+
+            if not self.review_service:
+                raise ReviewServiceError("ReviewService not initialized")
+
+            user_id = str(interaction.user.id)
+            review_data = await self.review_service.generate_daily_review(user_id)
+
+            # Create review embed
+            embed = await self._create_review_embed(review_data, "今日の知識レビュー")
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except ReviewServiceError as e:
+            error_embed = discord.Embed(
+                title="❌ レビュー生成エラー",
+                description=f"日次レビューの生成に失敗しました: {str(e)}",
+                color=0xFF0000,
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Unexpected error in daily review: {e}")
+            error_embed = discord.Embed(
+                title="❌ 予期しないエラー",
+                description="予期しないエラーが発生しました。管理者に連絡してください。",
+                color=0xFF0000,
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+
+    @review_group.command(name="weekly", description="この1週間の知識活動をレビューします")
+    async def review_weekly_command(self, interaction: discord.Interaction) -> None:
+        """Generate weekly knowledge review."""
+        await self._check_services(interaction)
+
+        try:
+            await interaction.response.defer(thinking=True)
+
+            if not self.review_service:
+                raise ReviewServiceError("ReviewService not initialized")
+
+            user_id = str(interaction.user.id)
+            review_data = await self.review_service.generate_weekly_review(user_id)
+
+            # Create review embed
+            embed = await self._create_review_embed(review_data, "週間知識レビュー")
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except ReviewServiceError as e:
+            error_embed = discord.Embed(
+                title="❌ レビュー生成エラー",
+                description=f"週次レビューの生成に失敗しました: {str(e)}",
+                color=0xFF0000,
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Unexpected error in weekly review: {e}")
+            error_embed = discord.Embed(
+                title="❌ 予期しないエラー",
+                description="予期しないエラーが発生しました。管理者に連絡してください。",
+                color=0xFF0000,
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+
+    @review_group.command(name="monthly", description="この1ヶ月の知識活動をレビューします")
+    async def review_monthly_command(self, interaction: discord.Interaction) -> None:
+        """Generate monthly knowledge review."""
+        await self._check_services(interaction)
+
+        try:
+            await interaction.response.defer(thinking=True)
+
+            if not self.review_service:
+                raise ReviewServiceError("ReviewService not initialized")
+
+            user_id = str(interaction.user.id)
+            review_data = await self.review_service.generate_monthly_review(user_id)
+
+            # Create review embed
+            embed = await self._create_review_embed(review_data, "月間知識レビュー")
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except ReviewServiceError as e:
+            error_embed = discord.Embed(
+                title="❌ レビュー生成エラー",
+                description=f"月次レビューの生成に失敗しました: {str(e)}",
+                color=0xFF0000,
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Unexpected error in monthly review: {e}")
+            error_embed = discord.Embed(
+                title="❌ 予期しないエラー",
+                description="予期しないエラーが発生しました。管理者に連絡してください。",
+                color=0xFF0000,
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+
+    @review_group.command(name="custom", description="指定した日数の知識活動をレビューします")
+    @app_commands.describe(days="レビュー対象の日数 (1-365)")
+    async def review_custom_command(self, interaction: discord.Interaction, days: int) -> None:
+        """Generate custom period knowledge review."""
+        await self._check_services(interaction)
+
+        try:
+            if days < 1 or days > 365:
+                await interaction.response.send_message("❌ 日数は1から365の間で指定してください。", ephemeral=True)
+                return
+
+            await interaction.response.defer(thinking=True)
+
+            if not self.review_service:
+                raise ReviewServiceError("ReviewService not initialized")
+
+            user_id = str(interaction.user.id)
+            review_data = await self.review_service.generate_custom_review(user_id, days)
+
+            # Create review embed
+            embed = await self._create_review_embed(review_data, f"過去{days}日間の知識レビュー")
+
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except ReviewServiceError as e:
+            error_embed = discord.Embed(
+                title="❌ レビュー生成エラー",
+                description=f"カスタムレビューの生成に失敗しました: {str(e)}",
+                color=0xFF0000,
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Unexpected error in custom review: {e}")
+            error_embed = discord.Embed(
+                title="❌ 予期しないエラー",
+                description="予期しないエラーが発生しました。管理者に連絡してください。",
+                color=0xFF0000,
+            )
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
+
+    async def _create_review_embed(self, review_data: Dict[str, Any], title: str) -> discord.Embed:
+        """Create a formatted embed for review results."""
+        stats = review_data["statistics"]
+        trends = review_data["trends"]
+        tag_analysis = review_data["tag_analysis"]
+        insights = review_data["insights"]
+
+        # Color based on activity level
+        activity_level = stats["total_activity"]
+        if activity_level >= 10:
+            color = 0x00FF00  # Green for high activity
+        elif activity_level >= 5:
+            color = 0xFFFF00  # Yellow for moderate activity
+        else:
+            color = 0xFF9900  # Orange for low activity
+
+        embed = discord.Embed(title=title, color=color)
+
+        # Statistics section
+        stats_text = (
+            f"📝 作成: {stats['notes_created']}件\n"
+            f"✏️ 編集: {stats['notes_edited']}件\n"
+            f"📊 総活動: {stats['total_activity']}件\n"
+            f"📄 総文字数: {stats['total_content_length']:,}文字\n"
+            f"🏷️ 使用タグ: {stats['unique_tags_used']}種類\n"
+            f"📏 平均長: {stats['avg_note_length']}文字/件"
+        )
+        embed.add_field(name="📈 活動統計", value=stats_text, inline=True)
+
+        # Trends section
+        trend_emoji = (
+            "📈"
+            if trends["trend_direction"] == "increasing"
+            else "📉"
+            if trends["trend_direction"] == "decreasing"
+            else "📊"
+        )
+        trend_text = (
+            f"{trend_emoji} 傾向: {trends['trend_direction']}\n"
+            f"📅 平均/日: {trends['avg_daily_activity']}件"
+        )
+        embed.add_field(name="📊 活動傾向", value=trend_text, inline=True)
+
+        # Top tags section
+        if tag_analysis["top_tags"]:
+            top_tags_text = "\n".join(
+                [f"🏷️ {tag}: {count}回" for tag, count in tag_analysis["top_tags"][:5]]
+            )
+            embed.add_field(name="🔝 人気タグ", value=top_tags_text, inline=True)
+
+        # Insights section
+        if insights:
+            insights_text = "\n".join(insights[:3])  # Show top 3 insights
+            embed.add_field(name="💡 インサイト", value=insights_text, inline=False)
+
+        # Activity chart (simple text representation)
+        if trends.get("daily_activity"):
+            chart_data = trends["daily_activity"][-7:]  # Last 7 days
+            chart_text = self._create_activity_chart(chart_data)
+            embed.add_field(name="📊 活動チャート", value=chart_text, inline=False)
+
+        # Footer with generation time
+        generation_time = datetime.fromisoformat(review_data["generated_at"])
+        embed.set_footer(text=f"生成時刻: {generation_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        return embed
+
+    def _create_activity_chart(self, daily_data: List[Dict[str, Any]]) -> str:
+        """Create a simple text-based activity chart."""
+        if not daily_data:
+            return "データがありません"
+
+        chart_lines = []
+        max_activity = max(day["activity"] for day in daily_data) or 1
+
+        for day_data in daily_data:
+            date = datetime.fromisoformat(day_data["date"]).strftime("%m/%d")
+            activity = day_data["activity"]
+
+            # Create bar representation (max 10 chars)
+            bar_length = int((activity / max_activity) * 10) if max_activity > 0 else 0
+            bar = "█" * bar_length + "░" * (10 - bar_length)
+
+            chart_lines.append(f"{date}: {bar} {activity}")
+
+        return "```\n" + "\n".join(chart_lines) + "\n```"
 
 
 class NoteMergeView(discord.ui.View):
