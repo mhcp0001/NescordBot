@@ -8,6 +8,13 @@ and infrastructure operations for the bot.
 from ..security import SecurityValidator
 from .alert_manager import Alert, AlertManager, AlertManagerError, AlertRule, AlertSeverity
 from .api_monitor import APIMonitor, APIMonitorError
+from .backup_manager import (
+    BackupInfo,
+    BackupIntegrityError,
+    BackupManager,
+    BackupManagerError,
+    RestoreError,
+)
 from .batch_processor import BatchProcessor, GitHubIntegratedQueue
 from .chromadb_service import ChromaDBService, DocumentMetadata, SearchResult
 from .database import DatabaseService, IDataStore
@@ -66,6 +73,11 @@ __all__ = [
     "AlertManagerError",
     "AlertRule",
     "AlertSeverity",
+    "BackupInfo",
+    "BackupIntegrityError",
+    "BackupManager",
+    "BackupManagerError",
+    "RestoreError",
     "DatabaseService",
     "IDataStore",
     "ChromaDBService",

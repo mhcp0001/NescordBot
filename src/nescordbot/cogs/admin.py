@@ -816,6 +816,340 @@ class AdminCog(commands.Cog):
             )
             await interaction.followup.send(embed=embed)
 
+    @app_commands.command(name="backup", description="データベースバックアップ管理")
+    @app_commands.describe(
+        action="実行するアクション",
+        filename="対象ファイル名（restore/deleteで使用）",
+        description="バックアップの説明（createで使用）",
+    )
+    @app_commands.choices(
+        action=[
+            app_commands.Choice(name="作成 (create)", value="create"),
+            app_commands.Choice(name="一覧 (list)", value="list"),
+            app_commands.Choice(name="復元 (restore)", value="restore"),
+            app_commands.Choice(name="削除 (delete)", value="delete"),
+            app_commands.Choice(name="統計 (stats)", value="stats"),
+        ]
+    )
+    async def backup(
+        self,
+        interaction: discord.Interaction,
+        action: str,
+        filename: Optional[str] = None,
+        description: Optional[str] = None,
+    ):
+        """データベースバックアップを管理します。"""
+        logger.info(f"Backup command: {action} by {interaction.user}")
+
+        if not await self._check_admin_permissions(interaction):
+            return
+
+        await interaction.response.defer()
+
+        try:
+            from ..services.backup_manager import BackupManager
+            from ..services.service_container import get_service_container
+
+            container = get_service_container()
+
+            if not container.has_service(BackupManager):
+                # BackupManagerを動的に登録
+                if not container.config:
+                    raise ValueError("Container config is None")
+                backup_manager = BackupManager(container.config)
+                container.register_singleton(BackupManager, backup_manager)
+                await backup_manager.initialize()
+
+            backup_manager = container.get_service(BackupManager)
+
+            if action == "create":
+                await self._handle_backup_create(interaction, backup_manager, description)
+            elif action == "list":
+                await self._handle_backup_list(interaction, backup_manager)
+            elif action == "restore":
+                await self._handle_backup_restore(interaction, backup_manager, filename)
+            elif action == "delete":
+                await self._handle_backup_delete(interaction, backup_manager, filename)
+            elif action == "stats":
+                await self._handle_backup_stats(interaction, backup_manager)
+
+        except Exception as e:
+            logger.error(f"Backup command error: {e}")
+            embed = discord.Embed(
+                title="❌ バックアップエラー",
+                description=f"バックアップ操作中にエラーが発生しました: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed)
+
+    async def _handle_backup_create(self, interaction, backup_manager, description: Optional[str]):
+        """バックアップ作成処理"""
+        desc = description or "Manual backup via Discord command"
+
+        embed = discord.Embed(
+            title="🔄 バックアップ作成中...",
+            description="データベースのバックアップを作成しています。しばらくお待ちください。",
+            colour=discord.Colour.blue(),
+        )
+        await interaction.followup.send(embed=embed)
+
+        try:
+            backup_info = await backup_manager.create_backup("manual", desc)
+
+            embed = discord.Embed(
+                title="✅ バックアップ作成完了",
+                colour=discord.Colour.green(),
+            )
+            embed.add_field(
+                name="📁 ファイル名",
+                value=backup_info.filename,
+                inline=False,
+            )
+            embed.add_field(
+                name="📏 サイズ",
+                value=f"{backup_info.size_bytes / (1024*1024):.2f} MB",
+                inline=True,
+            )
+            embed.add_field(
+                name="🕐 作成時刻",
+                value=backup_info.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                inline=True,
+            )
+            embed.add_field(
+                name="🔍 チェックサム",
+                value=f"`{backup_info.checksum[:16]}...`",
+                inline=False,
+            )
+            if backup_info.description:
+                embed.add_field(
+                    name="📝 説明",
+                    value=backup_info.description,
+                    inline=False,
+                )
+
+            await interaction.edit_original_response(embed=embed)
+
+        except Exception as e:
+            embed = discord.Embed(
+                title="❌ バックアップ作成失敗",
+                description=f"バックアップの作成に失敗しました: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.edit_original_response(embed=embed)
+
+    async def _handle_backup_list(self, interaction, backup_manager):
+        """バックアップ一覧表示"""
+        try:
+            backups = await backup_manager.list_backups()
+
+            if not backups:
+                embed = discord.Embed(
+                    title="📂 バックアップ一覧",
+                    description="バックアップファイルが見つかりませんでした。",
+                    colour=discord.Colour.orange(),
+                )
+                await interaction.followup.send(embed=embed)
+                return
+
+            embed = discord.Embed(
+                title="📂 バックアップ一覧",
+                description=f"全 {len(backups)} 件のバックアップ",
+                colour=discord.Colour.blue(),
+            )
+
+            for i, backup in enumerate(backups[:10]):  # 最新10件表示
+                size_mb = backup.size_bytes / (1024 * 1024)
+                created_str = backup.created_at.strftime("%m/%d %H:%M")
+
+                embed.add_field(
+                    name=f"{i+1}. {backup.filename}",
+                    value=(
+                        f"🕐 {created_str} | " f"📏 {size_mb:.1f}MB | " f"🏷️ {backup.backup_type}"
+                    ),
+                    inline=False,
+                )
+
+            if len(backups) > 10:
+                embed.set_footer(text=f"他 {len(backups) - 10} 件のバックアップがあります")
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            embed = discord.Embed(
+                title="❌ 一覧取得失敗",
+                description=f"バックアップ一覧の取得に失敗しました: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed)
+
+    async def _handle_backup_restore(self, interaction, backup_manager, filename: Optional[str]):
+        """バックアップリストア処理"""
+        if not filename:
+            embed = discord.Embed(
+                title="❌ パラメータエラー",
+                description="リストアするバックアップファイル名を指定してください。",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed)
+            return
+
+        # 確認ダイアログ表示
+        embed = discord.Embed(
+            title="⚠️ データベースリストア確認",
+            description=(
+                f"**{filename}** からデータベースを復元します。\n\n"
+                "⚠️ **警告**: 現在のデータは上書きされます！\n"
+                "自動的にリストア前のバックアップが作成されますが、慎重に実行してください。"
+            ),
+            colour=discord.Colour.orange(),
+        )
+
+        view = ConfirmationView()
+        await interaction.followup.send(embed=embed, view=view)
+
+        await view.wait()
+
+        if not view.confirmed:
+            embed = discord.Embed(
+                title="❌ リストア中断",
+                description="リストア処理がキャンセルされました。",
+                colour=discord.Colour.red(),
+            )
+            await interaction.edit_original_response(embed=embed, view=None)
+            return
+
+        # リストア実行
+        embed = discord.Embed(
+            title="🔄 リストア実行中...",
+            description="データベースを復元しています。しばらくお待ちください。",
+            colour=discord.Colour.blue(),
+        )
+        await interaction.edit_original_response(embed=embed, view=None)
+
+        try:
+            await backup_manager.restore_backup(filename, verify_integrity=True)
+
+            embed = discord.Embed(
+                title="✅ リストア完了",
+                description=f"**{filename}** からデータベースを正常に復元しました。",
+                colour=discord.Colour.green(),
+            )
+            await interaction.edit_original_response(embed=embed)
+
+        except Exception as e:
+            embed = discord.Embed(
+                title="❌ リストア失敗",
+                description=f"データベースの復元に失敗しました: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.edit_original_response(embed=embed)
+
+    async def _handle_backup_delete(self, interaction, backup_manager, filename: Optional[str]):
+        """バックアップ削除処理"""
+        if not filename:
+            embed = discord.Embed(
+                title="❌ パラメータエラー",
+                description="削除するバックアップファイル名を指定してください。",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed)
+            return
+
+        try:
+            await backup_manager.delete_backup(filename)
+
+            embed = discord.Embed(
+                title="✅ バックアップ削除完了",
+                description=f"**{filename}** を削除しました。",
+                colour=discord.Colour.green(),
+            )
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            embed = discord.Embed(
+                title="❌ 削除失敗",
+                description=f"バックアップの削除に失敗しました: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed)
+
+    async def _handle_backup_stats(self, interaction, backup_manager):
+        """バックアップ統計表示"""
+        try:
+            stats = await backup_manager.get_backup_stats()
+
+            embed = discord.Embed(
+                title="📊 バックアップ統計",
+                colour=discord.Colour.blue(),
+            )
+
+            embed.add_field(
+                name="📦 バックアップ数",
+                value=(
+                    f"総数: {stats.get('total_backups', 0)}\n"
+                    f"手動: {stats.get('manual_backups', 0)}\n"
+                    f"自動: {stats.get('auto_backups', 0)}"
+                ),
+                inline=True,
+            )
+
+            embed.add_field(
+                name="💾 ストレージ使用量",
+                value=(
+                    f"合計: {stats.get('total_size_mb', 0):.1f} MB\n"
+                    f"バイト: {stats.get('total_size_bytes', 0):,}"
+                ),
+                inline=True,
+            )
+
+            embed.add_field(
+                name="⚙️ 設定",
+                value=(
+                    f"最大保持数: {stats.get('max_backups', 0)}\n"
+                    f"自動実行: {'有効' if stats.get('auto_backup_enabled', False) else '無効'}\n"
+                    f"間隔: {stats.get('backup_interval_hours', 0)}時間"
+                ),
+                inline=True,
+            )
+
+            latest = stats.get("latest_backup")
+            if latest:
+                latest_time = latest.get("created_at", "N/A")
+                if latest_time != "N/A":
+                    try:
+                        from datetime import datetime
+
+                        dt = datetime.fromisoformat(latest_time.replace("Z", "+00:00"))
+                        latest_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                    except Exception:
+                        pass
+
+                embed.add_field(
+                    name="🕐 最新バックアップ",
+                    value=(
+                        f"ファイル: {latest.get('filename', 'N/A')}\n"
+                        f"作成: {latest_time}\n"
+                        f"タイプ: {latest.get('backup_type', 'N/A')}"
+                    ),
+                    inline=False,
+                )
+
+            embed.add_field(
+                name="📁 保存場所",
+                value=f"`{stats.get('backup_directory', 'N/A')}`",
+                inline=False,
+            )
+
+            await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            embed = discord.Embed(
+                title="❌ 統計取得失敗",
+                description=f"バックアップ統計の取得に失敗しました: {e}",
+                colour=discord.Colour.red(),
+            )
+            await interaction.followup.send(embed=embed)
+
 
 class StatsDetailView(discord.ui.View):
     """詳細なシステム統計情報の表示用View."""
