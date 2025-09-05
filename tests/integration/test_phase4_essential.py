@@ -18,6 +18,7 @@ from src.nescordbot.services import (
     AlertManager,
     APIMonitor,
     ChromaDBService,
+    DatabaseService,
     EmbeddingService,
     FallbackManager,
     KnowledgeManager,
@@ -99,9 +100,25 @@ class TestPhase4EssentialIntegration:
         """Test PrivacyManager basic PII detection."""
         privacy_manager = essential_bot.service_container.get_service(PrivacyManager)
 
-        # Test PII detection
-        text_with_email = "Contact me at john.doe@example.com for more info"
-        detected_rules = await privacy_manager.detect_pii(text_with_email)
+        # Mock the database connection for initialization
+        with patch.object(privacy_manager, "db") as mock_db:
+            mock_db.get_connection = AsyncMock()
+            mock_db.get_connection.return_value.__aenter__ = AsyncMock()
+            mock_db.get_connection.return_value.__aexit__ = AsyncMock()
+
+            # Mock database operations
+            mock_conn = AsyncMock()
+            mock_db.get_connection.return_value.__aenter__.return_value = mock_conn
+            mock_conn.execute = AsyncMock()
+            mock_conn.fetchall = AsyncMock(return_value=[])
+            mock_conn.commit = AsyncMock()
+
+            # Initialize PrivacyManager to load PII rules
+            await privacy_manager.initialize()
+
+            # Test PII detection
+            text_with_email = "Contact me at john.doe@example.com for more info"
+            detected_rules = await privacy_manager.detect_pii(text_with_email)
 
         assert len(detected_rules) > 0
         # Should detect email pattern
@@ -139,7 +156,8 @@ class TestPhase4EssentialIntegration:
         )
 
         # Should not raise exception
-        await alert_manager.send_alert(test_alert)
+        # Note: Using _trigger_alert as send_alert method doesn't exist
+        await alert_manager._trigger_alert(test_alert)
 
     async def test_embedding_service_basic_functionality(self, essential_bot):
         """Test EmbeddingService basic functionality."""
