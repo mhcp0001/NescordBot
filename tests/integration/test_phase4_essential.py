@@ -101,17 +101,15 @@ class TestPhase4EssentialIntegration:
         privacy_manager = essential_bot.service_container.get_service(PrivacyManager)
 
         # Mock the database connection for initialization
-        with patch.object(privacy_manager, "db") as mock_db:
-            mock_db.get_connection = AsyncMock()
-            mock_db.get_connection.return_value.__aenter__ = AsyncMock()
-            mock_db.get_connection.return_value.__aexit__ = AsyncMock()
+        with patch.object(privacy_manager.db, "get_connection") as mock_db:
+            mock_connection = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_db.return_value.__aexit__ = AsyncMock()
 
             # Mock database operations
-            mock_conn = AsyncMock()
-            mock_db.get_connection.return_value.__aenter__.return_value = mock_conn
-            mock_conn.execute = AsyncMock()
-            mock_conn.fetchall = AsyncMock(return_value=[])
-            mock_conn.commit = AsyncMock()
+            mock_connection.execute = AsyncMock()
+            mock_connection.fetchall = AsyncMock(return_value=[])
+            mock_connection.commit = AsyncMock()
 
             # Initialize PrivacyManager to load PII rules
             await privacy_manager.initialize()
@@ -121,8 +119,8 @@ class TestPhase4EssentialIntegration:
             detected_rules = await privacy_manager.detect_pii(text_with_email)
 
         assert len(detected_rules) > 0
-        # Should detect email pattern
-        assert any("email" in rule.name.lower() for rule in detected_rules)
+        # Should detect email pattern (detected_rules is List[Tuple[PrivacyRule, List[str]]])
+        assert any("email" in rule.name.lower() for rule, matches in detected_rules)
 
         # Test masking
         from src.nescordbot.services.privacy_manager import PrivacyLevel
@@ -156,8 +154,8 @@ class TestPhase4EssentialIntegration:
         )
 
         # Should not raise exception
-        # Note: Using _trigger_alert as send_alert method doesn't exist
-        await alert_manager._trigger_alert(test_alert)
+        # Use send_alert public API method (added in Phase 1)
+        await alert_manager.send_alert(test_alert)
 
     async def test_embedding_service_basic_functionality(self, essential_bot):
         """Test EmbeddingService basic functionality."""
@@ -166,10 +164,10 @@ class TestPhase4EssentialIntegration:
 
         with patch.object(
             embedding_service,
-            "_generate_embedding_batch",
-            return_value=[{"embedding": [0.1, 0.2, 0.3], "text": "test"}],
+            "_generate_embedding_api",
+            return_value=[0.1, 0.2, 0.3],
         ):
-            result = await embedding_service.create_embedding("test text")
+            result = await embedding_service.generate_embedding("test text")
             assert result is not None
             assert hasattr(result, "embedding")
             assert hasattr(result, "text")
@@ -178,16 +176,27 @@ class TestPhase4EssentialIntegration:
         """Test TokenManager basic functionality."""
         token_manager = essential_bot.service_container.get_service(TokenManager)
 
-        # Test usage tracking
-        await token_manager.track_usage("test_service", 100, "test")
+        # Mock database operations for TokenManager
+        with patch.object(token_manager.db, "get_connection") as mock_db:
+            mock_connection = AsyncMock()
+            mock_db.return_value.__aenter__ = AsyncMock(return_value=mock_connection)
+            mock_db.return_value.__aexit__ = AsyncMock()
 
-        # Test rate limiting
-        is_allowed = await token_manager.check_rate_limit("test_user", "test_operation")
-        assert isinstance(is_allowed, bool)
+            mock_connection.execute = AsyncMock()
+            mock_connection.fetchall = AsyncMock(return_value=[])
+            mock_connection.fetchone = AsyncMock(return_value=None)
+            mock_connection.commit = AsyncMock()
 
-        # Test statistics
-        stats = await token_manager.get_usage_stats("test_service")
-        assert isinstance(stats, dict)
+            # Test usage tracking
+            await token_manager.record_usage("test_service", "test_operation", 100)
+
+            # Test rate limiting (using correct method name)
+            limits = await token_manager.check_limits("test_service")
+            assert isinstance(limits, dict)
+
+            # Test statistics (using correct method name)
+            history = await token_manager.get_usage_history("test_service")
+            assert isinstance(history, list)
 
     async def test_service_interaction_basic(self, essential_bot):
         """Test basic interaction between services."""
