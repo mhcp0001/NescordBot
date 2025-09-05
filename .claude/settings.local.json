@@ -6,19 +6,9 @@
   },
   "permissions": {
     "allow": [
-      "Bash(gh*)",
-      "Bash(poetry run)",
-      "Bash(poetry run black:*)",
-      "mcp__serena",
-      "Bash(poetry run pytest:*)",
-      "Bash(git add:*)",
-      "Bash(rm -rf .tmp/**)",
-      "mcp__serena",
-      "Bash(gh issue list:*)",
-      "Bash(gh issue view:*)",
-      "Bash(git commit:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
