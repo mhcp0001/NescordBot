@@ -6,19 +6,18 @@
   },
   "permissions": {
     "allow": [
-      "Bash(gh*)",
-      "Bash(poetry run)",
-      "Bash(poetry run black:*)",
-      "mcp__serena",
-      "Bash(poetry run pytest:*)",
+      "Bash(poetry run mypy:*)",
+      "mcp__serena__write_memory",
       "Bash(git add:*)",
-      "Bash(rm -rf .tmp/**)",
-      "mcp__serena",
-      "Bash(gh issue list:*)",
-      "Bash(gh issue view:*)",
       "Bash(git commit:*)",
-      "Bash(gh run list:*)",
-      "Bash(gh run view:*)"
+      "Bash(rm:*)",
+      "Bash(poetry run pytest:*)",
+      "mcp__serena",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue:*)",
+      "Bash(git log:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr create:*)"
     ],
     "deny": [],
     "ask": []
