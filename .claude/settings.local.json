@@ -11,9 +11,13 @@
       "Bash(git commit:*)",
       "Bash(gh run view:*)",
       "Bash(git push:*)",
-      "mcp__serena__find_symbol",
-      "mcp__serena__search_for_pattern",
-      "Bash(poetry run pytest:*)"
+      "mcp__serena",
+      "Bash(poetry run pytest:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue create:*)",
+      "mcp__serena__write_memory",
+      "Bash(dir:*)",
+      "Bash(del:*)"
     ],
     "deny": [],
     "ask": []

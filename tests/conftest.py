@@ -22,6 +22,20 @@ from discord.ext import commands
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def setup_global_test_environment():
+    """Set up global test environment configuration."""
+    # Set test mode indicators
+    os.environ["NESCORDBOT_TEST_MODE"] = "true"
+    os.environ["NESCORDBOT_CI_MODE"] = str(os.getenv("CI", "false").lower() == "true")
+
+    yield
+
+    # Cleanup
+    os.environ.pop("NESCORDBOT_TEST_MODE", None)
+    os.environ.pop("NESCORDBOT_CI_MODE", None)
+
+
 @pytest.fixture(autouse=True)
 def setup_test_environment():
     """Set up test environment variables before each test."""
@@ -32,6 +46,7 @@ def setup_test_environment():
     test_env_vars = {
         "DISCORD_TOKEN": "MTA1234567890123456.GH7890.abcdefghijklmnop123456789012345678901234",
         "OPENAI_API_KEY": "sk-abcdef1234567890abcdef1234567890abcdef1234567890ab",
+        "GEMINI_API_KEY": "AIzaSyB1234567890abcdefghijklmnopqrstuvwxyz",
         "LOG_LEVEL": "DEBUG",
         "MAX_AUDIO_SIZE_MB": "25",
         "SPEECH_LANGUAGE": "ja",
@@ -308,20 +323,36 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
+    config.addinivalue_line("markers", "unit: marks tests as unit tests")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "e2e: marks tests as end-to-end tests")
     config.addinivalue_line("markers", "network: marks tests that require network access")
+    config.addinivalue_line("markers", "ci: marks tests suitable for CI environment")
 
 
 def pytest_collection_modifyitems(config, items):
     """Modify test collection to add markers automatically."""
     for item in items:
+        # Mark unit tests
+        if "unit" in item.nodeid:
+            item.add_marker(pytest.mark.unit)
+
         # Mark integration tests
         if "integration" in item.nodeid:
             item.add_marker(pytest.mark.integration)
+            item.add_marker(pytest.mark.ci)  # Integration tests are CI-suitable
+
+        # Mark E2E tests
+        if "e2e" in item.name.lower() or "end_to_end" in item.name.lower():
+            item.add_marker(pytest.mark.e2e)
 
         # Mark network tests
         if any(keyword in item.name.lower() for keyword in ["api", "http", "network"]):
             item.add_marker(pytest.mark.network)
+
+        # Mark slow tests
+        if "performance" in item.name.lower() or "load" in item.name.lower():
+            item.add_marker(pytest.mark.slow)
 
 
 class MockBotContext:
@@ -454,3 +485,75 @@ def mock_bot_context():
         return MockBotContext().setup_basic_mocks()
 
     return _create_context
+
+
+# New Test Infrastructure Fixtures
+
+
+@pytest.fixture
+def test_config(tmp_path):
+    """Create a test configuration."""
+    from src.nescordbot.config import BotConfig
+
+    return BotConfig(
+        discord_token="TEST_TOKEN_NOT_REAL.XXXXXX.DUMMY_VALUE_FOR_TESTING_ONLY",
+        openai_api_key="sk-1234567890abcdef1234567890abcdef1234567890abcdef12",
+        gemini_api_key="AIzaSyB1234567890abcdefghijklmnopqrstuvwxyz",
+        database_url="sqlite:///:memory:",
+        data_directory=str(tmp_path / "data"),
+        chromadb_path=str(tmp_path / "chromadb"),
+        phase4_enabled=True,
+        chromadb_enabled=True,
+        enable_pkm=True,
+        privacy_enabled=True,
+        alert_enabled=True,
+        embedding_model="text-embedding-3-small",
+    )
+
+
+@pytest.fixture
+async def isolated_bot(test_config):
+    """Create a completely isolated test bot with no real services."""
+    from tests.infrastructure.test_bot_factory import TestBotFactory
+    from tests.mocks.service_mock_registry import ServiceMockRegistry
+
+    # Create isolated bot
+    bot = await TestBotFactory.create_isolated_bot(test_config)
+
+    # Register complete mock set
+    mock_registry = ServiceMockRegistry.create_complete_mock_set(test_config, bot.database_service)
+
+    for service_type, mock_service in mock_registry.items():
+        bot.service_container.register_test_mock(service_type, mock_service)  # type: ignore
+
+    # Initialize the test container
+    await bot.service_container.initialize_services()
+
+    yield bot
+
+    # Cleanup
+    await TestBotFactory.cleanup_bot(bot)
+
+
+@pytest.fixture
+async def performance_bot(test_config):
+    """Create a bot optimized for performance testing."""
+    from tests.infrastructure.test_bot_factory import TestBotFactory
+
+    bot = await TestBotFactory.create_performance_test_bot(test_config)
+
+    yield bot
+
+    # Cleanup
+    await TestBotFactory.cleanup_bot(bot)
+
+
+@pytest.fixture
+def mock_service_registry(test_config):
+    """Factory for creating service mock registries."""
+    from tests.mocks.service_mock_registry import ServiceMockRegistry
+
+    def _create_registry(db_service=None):
+        return ServiceMockRegistry.create_complete_mock_set(test_config, db_service)
+
+    return _create_registry
