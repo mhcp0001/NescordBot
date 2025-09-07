@@ -52,7 +52,7 @@ class KnowledgeManager:
         chromadb_service: ChromaDBService,
         embedding_service: EmbeddingService,
         sync_manager: SyncManager,
-        obsidian_github_service: ObsidianGitHubService,
+        obsidian_github_service: Optional[ObsidianGitHubService],
         fallback_manager: Optional[Any] = None,
     ) -> None:
         """
@@ -64,7 +64,7 @@ class KnowledgeManager:
             chromadb_service: ChromaDB service for vector operations
             embedding_service: Embedding service for text vectorization
             sync_manager: Synchronization manager for data consistency
-            obsidian_github_service: ObsidianGitHub service for external storage
+            obsidian_github_service: Optional ObsidianGitHub service for external storage
             fallback_manager: Optional fallback manager for API limiting
         """
         self.config = config
@@ -1295,16 +1295,21 @@ updated: {note["updated_at"]}
 """
                 content = frontmatter + note["content"]
 
-                await self.obsidian_github.save_to_obsidian(
-                    filename=filename,
-                    content=content,
-                    directory="knowledge_notes",
-                    metadata={
-                        "note_id": note_id,
-                        "source_type": note["source_type"],
-                        "user_id": note["user_id"],
-                    },
-                )
+                if self.obsidian_github is not None:
+                    await self.obsidian_github.save_to_obsidian(
+                        filename=filename,
+                        content=content,
+                        directory="knowledge_notes",
+                        metadata={
+                            "note_id": note_id,
+                            "source_type": note["source_type"],
+                            "user_id": note["user_id"],
+                        },
+                    )
+                else:
+                    logger.info(
+                        f"ObsidianGitHub integration disabled, skipping save for note {note_id}"
+                    )
 
         except Exception as e:
             logger.warning(f"Failed to sync note {note_id} to services: {e}")

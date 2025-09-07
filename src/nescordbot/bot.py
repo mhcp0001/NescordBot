@@ -488,13 +488,32 @@ class NescordBot(commands.Bot):
 
             self.service_container.register_factory(SyncManager, create_sync_manager)
 
+            # ObsidianGitHubService factory (only register if service is available)
+            if hasattr(self, "obsidian_service") and self.obsidian_service is not None:
+
+                def create_obsidian_github_service() -> ObsidianGitHubService:
+                    """Create ObsidianGitHubService from initialized instance."""
+                    # mypy: self.obsidian_service is checked to be not None above
+                    return self.obsidian_service  # type: ignore[return-value]
+
+                self.service_container.register_factory(
+                    ObsidianGitHubService, create_obsidian_github_service
+                )
+
             # KnowledgeManager factory
             def create_knowledge_manager() -> KnowledgeManager:
                 database_service = self.database_service
                 chromadb_service = self.service_container.get_service(ChromaDBService)
                 embedding_service = self.service_container.get_service(EmbeddingService)
                 sync_manager = self.service_container.get_service(SyncManager)
-                obsidian_github_service = self.service_container.get_service(ObsidianGitHubService)
+
+                # ObsidianGitHubService is optional - only get if available
+                obsidian_github_service = None
+                if self.service_container.has_service(ObsidianGitHubService):
+                    obsidian_github_service = self.service_container.get_service(
+                        ObsidianGitHubService
+                    )
+
                 return KnowledgeManager(
                     self.config,
                     database_service,
