@@ -56,8 +56,8 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app/src:$PYTHONPATH
 
-# Define volume mount points for Railway persistent storage
-VOLUME ["/app/data", "/app/chromadb_data"]
+# NOTE: Volumes are configured in railway.json for Railway persistent storage
+# Dockerfile VOLUME keyword is not supported by Railway
 
 # Health check (optional but recommended)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

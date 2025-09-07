@@ -17,7 +17,8 @@
       "Bash(gh issue create:*)",
       "mcp__serena__write_memory",
       "Bash(dir:*)",
-      "Bash(del:*)"
+      "Bash(del:*)",
+      "Bash(gh run watch:*)"
     ],
     "deny": [],
     "ask": []
