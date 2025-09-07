@@ -514,6 +514,11 @@ def test_config(tmp_path):
 @pytest.fixture
 async def isolated_bot(test_config):
     """Create a completely isolated test bot with no real services."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info("Creating isolated_bot fixture...")
+
     from tests.infrastructure.test_bot_factory import TestBotFactory
     from tests.mocks.service_mock_registry import ServiceMockRegistry
 

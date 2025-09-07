@@ -93,7 +93,9 @@ class ServiceMockRegistry:
             provider: str, model: str, input_tokens: int = 0, output_tokens: int = 0, **kwargs
         ):
             if not provider or not model:
-                from src.nescordbot.services.exceptions import TokenUsageError
+                # Create a mock TokenUsageError for testing
+                class TokenUsageError(Exception):
+                    pass
 
                 raise TokenUsageError("Provider and model are required")
             return None

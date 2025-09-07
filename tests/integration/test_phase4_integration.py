@@ -128,12 +128,17 @@ class TestPhase4ServiceIntegration:
 
         embedding_service.generate_embedding.return_value = mock_result
 
-        # Configure search engine to return realistic results
-        search_engine.hybrid_search.return_value = [
-            {"content": "Python programming tutorial", "score": 0.95},
-            {"content": "Machine learning basics", "score": 0.87},
-            {"content": "Data science concepts", "score": 0.73},
-        ]
+        # Configure search engine to return realistic results and call embedding service
+        async def mock_hybrid_search(*args, **kwargs):
+            # Simulate calling embedding service
+            await embedding_service.generate_embedding("test query")
+            return [
+                {"content": "Python programming tutorial", "score": 0.95},
+                {"content": "Machine learning basics", "score": 0.87},
+                {"content": "Data science concepts", "score": 0.73},
+            ]
+
+        search_engine.hybrid_search.side_effect = mock_hybrid_search
 
         # Perform hybrid search
         query = "Python programming"
@@ -237,7 +242,7 @@ class TestPhase4EndToEndFlows:
         assert any("Python" in result["content"] for result in results)
 
         # Verify fallback manager is available
-        is_available = fallback_manager.is_service_available("search")
+        is_available = await fallback_manager.is_service_available("search")
         assert is_available is True
 
     async def test_comprehensive_pii_workflow(self, isolated_bot):

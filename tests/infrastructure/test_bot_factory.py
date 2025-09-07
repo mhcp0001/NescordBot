@@ -44,11 +44,16 @@ class TestBotFactory:
 
         with patch("discord.Client.login"), patch("discord.Client.connect"), patch(
             "src.nescordbot.config.get_config_manager"
-        ) as mock_config_manager:
+        ) as mock_config_manager, patch(
+            "src.nescordbot.bot.NescordBot._init_service_container"
+        ) as mock_service_init:
             # Mock config manager
             mock_manager = Mock()
             mock_manager.config = config
             mock_config_manager.return_value = mock_manager
+
+            # Mock service container initialization to prevent real services
+            mock_service_init.return_value = None
 
             # Create bot instance
             bot = NescordBot()
@@ -56,6 +61,7 @@ class TestBotFactory:
 
             # Replace with test-only ServiceContainer
             bot.service_container = TestServiceContainer(config)
+            logger.info("TestServiceContainer initialized - real service creation blocked")
 
             # Mock database service completely
             bot.database_service = TestBotFactory._create_mock_database_service()

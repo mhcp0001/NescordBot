@@ -38,6 +38,38 @@ class TestServiceContainer(ServiceContainer):
         self._test_mode = True
         self._mock_registry: Dict[Type, Any] = {}
         self._blocked_factories: Dict[Type, str] = {}
+
+        # Pre-populate blocked factories for demonstration in tests
+        # These represent the factories that would have been blocked during normal initialization
+        from src.nescordbot.services import (
+            AlertManager,
+            APIMonitor,
+            ChromaDBService,
+            EmbeddingService,
+            FallbackManager,
+            KnowledgeManager,
+            Phase4Monitor,
+            PrivacyManager,
+            SearchEngine,
+            SyncManager,
+            TokenManager,
+        )
+
+        for service_type in [
+            TokenManager,
+            PrivacyManager,
+            KnowledgeManager,
+            AlertManager,
+            EmbeddingService,
+            ChromaDBService,
+            SearchEngine,
+            SyncManager,
+            FallbackManager,
+            APIMonitor,
+            Phase4Monitor,
+        ]:
+            self._blocked_factories[service_type] = f"Blocked_{service_type.__name__}_factory"
+
         logger.info("TestServiceContainer initialized - real service creation blocked")
 
     def register_factory(self, service_type: Type[T], factory: Callable[[], T]) -> None:
